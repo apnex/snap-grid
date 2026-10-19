@@ -1,0 +1,114 @@
+# A release (the design's section 7.4, decision D9): a run on a pushed tag v<semver>, one at a time per
+# repository, with contents: write and nothing else. It refuses a tag that is not package.json's version
+# or that already has a published release, runs the gate and the consumer test, packs the package and
+# writes the file's SHA-512, creates a draft release holding both, downloads both back through the
+# authenticated API and compares them byte for byte with what it packed, and only then publishes.
+#
+# A failed run leaves at most a draft, which the next run of the same tag deletes and remakes; a published
+# release is never replaced, and a fix is a new version. Only this workflow makes a release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: refuse a tag that differs from package.json's version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "the tag $TAG is not v$version, package.json's version"
+            exit 1
+          fi
+          echo "FILE=apnex-snap-grid-$version.tgz" >> "$GITHUB_ENV"
+
+      # A draft is not found by its tag -- GET /releases/tags/{tag} answers 404 for one -- so every
+      # release of the tag is found by listing them all.
+      - name: refuse a tag that already has a published release, and delete a draft of it
+        run: |
+          gh api --paginate "repos/$REPO/releases" --jq '.[] | [.id, .draft, .tag_name] | @tsv' > "$RUNNER_TEMP/releases.tsv"
+          if awk -F'\t' -v tag="$TAG" '$3 == tag && $2 == "false" { found = 1 } END { exit !found }' "$RUNNER_TEMP/releases.tsv"; then
+            echo "$TAG already has a published release, which is never replaced; a fix is a new version"
+            exit 1
+          fi
+          awk -F'\t' -v tag="$TAG" '$3 == tag && $2 == "true" { print $1 }' "$RUNNER_TEMP/releases.tsv" | while read -r id; do
+            echo "deleting draft release $id of $TAG, left by an earlier run"
+            gh api -X DELETE "repos/$REPO/releases/$id"
+          done
+
+      - run: npm ci
+      - name: fetch the style rules (mission-kit at HEAD)
+        uses: actions/checkout@v4
+        with:
+          repository: apnex/mission-kit
+          path: .mission-kit
+      - name: the gate
+        run: npm run gate
+        env:
+          MISSION_KIT: ${{ github.workspace }}/.mission-kit
+      - name: the consumer test
+        run: npm run consumer
+
+      - name: pack, and write the file's SHA-512
+        run: |
+          mkdir -p "$RUNNER_TEMP/packed"
+          npm run build
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/packed"
+          cd "$RUNNER_TEMP/packed"
+          test -f "$FILE"
+          sha512sum "$FILE" > "$FILE.sha512"
+          cat "$FILE.sha512"
+
+      - name: create a draft release holding the file and its SHA-512
+        run: |
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" \
+            --notes "@apnex/snap-grid ${TAG#v}. Name this release's tarball in package.json (README.md, Install); its SHA-512 is attached beside it." \
+            "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/packed/$FILE.sha512"
+          ids=$(gh api --paginate "repos/$REPO/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          if [ -z "$ids" ] || [ "$(printf '%s\n' "$ids" | wc -l)" != 1 ]; then
+            echo "expected one draft release of $TAG, found: $ids"
+            exit 1
+          fi
+          echo "DRAFT_ID=$ids" >> "$GITHUB_ENV"
+
+      # A draft's public address answers 404, so both files come back through the authenticated API,
+      # by the draft's id and each asset's id.
+      - name: download both back through the authenticated API, and compare them byte for byte
+        run: |
+          mkdir -p "$RUNNER_TEMP/downloaded"
+          gh api --paginate "repos/$REPO/releases/$DRAFT_ID/assets" --jq '.[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/assets.tsv"
+          if [ "$(wc -l < "$RUNNER_TEMP/assets.tsv")" != 2 ]; then
+            echo "the draft holds these assets, not the file and its SHA-512:"
+            cat "$RUNNER_TEMP/assets.tsv"
+            exit 1
+          fi
+          while IFS=$'\t' read -r asset name; do
+            gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$asset" > "$RUNNER_TEMP/downloaded/$name"
+          done < "$RUNNER_TEMP/assets.tsv"
+          cmp "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/downloaded/$FILE"
+          cmp "$RUNNER_TEMP/packed/$FILE.sha512" "$RUNNER_TEMP/downloaded/$FILE.sha512"
+          cd "$RUNNER_TEMP/downloaded"
+          sha512sum -c "$FILE.sha512"
+
+      - name: publish the draft, only now
+        run: gh api -X PATCH "repos/$REPO/releases/$DRAFT_ID" -F draft=false --jq '.html_url'
