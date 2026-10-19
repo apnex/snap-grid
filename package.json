@@ -1,0 +1,42 @@
+{
+  "name": "@apnex/snap-grid",
+  "version": "0.1.0",
+  "description": "Answer, for a grid declared as data, where its positions lie in a plane and which position lies nearest a point.",
+  "license": "MIT",
+  "author": "apnex",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apnex/snap-grid.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance.d.ts",
+      "default": "./dist/conformance.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "VISION.md",
+    "CONTRACT.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node tools/clean-dist.mjs && tsc -p .",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test \"test/**/*.test.js\"",
+    "gate": "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
+    "consumer": "node tools/consumer-test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
