@@ -1,0 +1,7 @@
+{
+  "about": "One list per consumer of snap-grid: words of its vocabulary that snap-grid's source must not hold (the design's section 7.2). Test data: never in src/, never in a release.",
+  "lists": {
+    "draw": ["node", "link", "zone", "pipe", "waypoint", "device", "diagram", "anchor", "glyph", "spawner", "transit", "layout", "junction", "drawv2"],
+    "gesture-tester": ["keyboard", "keycap"]
+  }
+}

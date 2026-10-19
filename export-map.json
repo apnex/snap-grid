@@ -1,0 +1,17 @@
+{
+  "package": "@apnex/snap-grid",
+  "paths": {
+    ".": {
+      "exports": {
+        "openGrid": { "part": "snap-grid", "serves": ["declared-grid", "nearest-grid-position", "grid-position-point", "exact-grid-position", "grid-positions-in-view", "next-grid-position", "grid-position-span", "enclosing-grid-block"] },
+        "square": { "part": "snap-grid", "serves": ["declared-grid", "nearest-grid-position", "grid-position-point", "exact-grid-position", "grid-positions-in-view", "next-grid-position", "grid-position-span", "enclosing-grid-block"] }
+      }
+    },
+    "./conformance": {
+      "exports": {
+        "checkGridShape": { "part": "snap-grid", "serves": ["grid-shape-conformance"] }
+      }
+    }
+  },
+  "deferred": {}
+}
