@@ -27,7 +27,7 @@ It calls draw's own functions where they are exported:
 
 The zone wrap's floor and ceiling sit inside a closure, so the generator quotes them and their clamps (`zones/zone-keys.mjs:28-33`), and compares the quote with the file before it generates anything:
 - enclosing, unbounded -- `floorZ` and `ceilZ` alone, on the grid of pitch 60 and origin 30;
-- enclosing, bounded -- with the clamps, within 930 by 510, for rects not wholly beyond a side, since the wrap clamps its low edge only from below and its high edge only from above, and never meets such a rect.
+- enclosing, bounded -- with the clamps, within 930 by 510, over rects inside, straddling and wholly beyond every side, the last of which the wrap is never given, since it wraps a selection's bounds within the extent.
 
 The coordinates are integers and fractions of both signs, `-0`, ties and their neighbouring doubles, lattice points and theirs, points one rounding from either, points on, inside and beyond every edge, tiny magnitudes, and magnitudes up to 2^50.
 
@@ -36,22 +36,26 @@ The coordinates are integers and fractions of both signs, `-0`, ties and their n
 ## What it holds
 
 Every answer draw gave was compared, as the corpus was made, with the exact answer of the BigInt oracle in `test/support/oracle.js`.\
-Where they agree, the case is in `cases`; where they differ, it is in `apart`, with draw's answer as `referenceAnswer`, the exact one as `answer`, and a reason.
+Where they agree, the case is in `cases`; where they differ, it is in `apart`, with draw's answer as `referenceAnswer`, the exact one as `answer`, and `reasons`, every reason that applies, judged answer field by answer field.An entry with two reasons counts once under Apart and once under each of its reasons.
 
-| Question | Cases | Apart, rounding | Apart, domain |
-|---|---|---|---|
-| nearest | 5533 | 49 | 18 |
-| positionAt | 633 | 1 | 0 |
-| pointOf | 712 | 0 | 0 |
-| inView | 7 | 0 | 0 |
-| enclosing | 1261 | 3 | 5 |
-| span | 640 | 0 | 0 |
-| all | 8786 | 53 | 23 |
+| Question | Cases | Apart | Rounding | Domain | Beyond |
+|---|---|---|---|---|---|
+| nearest | 5533 | 67 | 49 | 19 | 0 |
+| positionAt | 633 | 1 | 1 | 0 | 0 |
+| pointOf | 712 | 0 | 0 | 0 | 0 |
+| inView | 7 | 0 | 0 | 0 | 0 |
+| enclosing | 1422 | 612 | 10 | 5 | 598 |
+| span | 640 | 0 | 0 | 0 | 0 |
+| all | 8947 | 680 | 60 | 24 | 598 |
+
+Two entries carry two reasons: a nearest point at `x = -60 - 2^-47`, `y = 2^50` on the unbounded grid of origin 30, rounding and domain; and an enclosing rect from `x = -30.000000000000004` reaching below the bounded grid, rounding and beyond.
 
 **Rounding** is a point where draw's binary64 arithmetic is not exact: on the grid of origin 30, `v - 30` rounds before it divides, so within one rounding of a cell's edge draw gives the farther position, and `onLayout` accepts `x = -30 + 2^-48` (the design's section 6.3).\
 Every one lies on that grid; on the grid of origin 0, `v - 0` is exact and the division never rounds onto a tie, so no point there differs.
 
-**Domain** is a point within 2^50 whose exact nearest lattice point, which draw gives, lies beyond 2^50, where snap-grid clamps to the domain: on the grid of origin 30, `x = 2^50` gives `1125899906842650` from draw and `1125899906842590` from snap-grid (the design's section 6.3).
+**Domain** is a point within 2^50 whose answer by draw's rule, computed exactly, lies beyond 2^50, where snap-grid clamps to the domain: on the grid of origin 30, `x = 2^50` gives `1125899906842650` from draw and `1125899906842590` from snap-grid (the design's section 6.3).
+
+**Beyond** is a rect wholly beyond one side of the bounded grid of origin 30, by at least a cell, which the zone wrap is never given: the wrap clamps its low edge only from below and its high edge only from above, so its block inverts -- `from` past `to` -- where snap-grid gives the edge position there (SG9).A rect beyond a side by less than a cell gets the same block from both.
 
 -0 is written as the string `"-0"`, since JSON has no negative zero, and the test reads it back as `-0`.\
 The file names no word of draw's vocabulary, which its test confirms with the vocabulary check's list.

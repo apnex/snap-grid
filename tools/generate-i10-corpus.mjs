@@ -14,9 +14,15 @@
 //
 // Every answer draw gives is compared, at generation, with the exact answer of the BigInt oracle in
 // test/support/oracle.js. Where they agree the case joins `cases`; where they differ it joins `apart`,
-// with draw's answer as `referenceAnswer`, the exact one as `answer`, and a reason: `rounding` where
-// draw's binary64 arithmetic rounds, `domain` where draw's answer is the exact nearest lattice point but
-// lies outside the domain of coordinates within 2^50, where snap-grid clamps.
+// with draw's answer as `referenceAnswer`, the exact one as `answer`, and every reason that applies:
+// - `rounding`: draw's binary64 arithmetic is not exact -- its answer differs from its own rule
+//   computed exactly;
+// - `domain`: draw's rule, computed exactly, gives a position whose point lies beyond the domain of
+//   coordinates within 2^50, where snap-grid clamps;
+// - `beyond`: a rect wholly beyond one side of the bounded grid, which the zone wrap is never given
+//   (it wraps a selection's bounds, within the extent): the wrap clamps its low edge only from below and
+//   its high edge only from above, so its block inverts, where snap-grid gives the edge position.
+// The reasons are judged answer field by answer field, so a point with two causes carries both.
 //
 // Usage:  node tools/generate-i10-corpus.mjs <draw checkout at 0c59572> [output]
 import { execFileSync } from "node:child_process";
@@ -96,10 +102,34 @@ const same = (a, b) => {
 	const ka = Object.keys(a), kb = Object.keys(b);
 	return ka.length === kb.length && ka.every((k) => same(a[k], b[k]));
 };
-/** Files a case: into `cases` when draw's answer is the exact one, else into `apart` with both. */
-function file(entry, reference, exact, latticeExact) {
-	if (same(reference, exact)) cases.push({ ...entry, answer: exact });
-	else apart.push({ ...entry, reason: same(reference, latticeExact) ? "domain" : "rounding", referenceAnswer: reference, answer: exact });
+const REASONS = ["rounding", "domain", "beyond"];
+/** An answer's numeric fields, by path. */
+const leaves = (v, at = "") => (v !== null && typeof v === "object" ? Object.keys(v).flatMap((k) => leaves(v[k], `${at}/${k}`)) : [[at, v]]);
+/**
+ * Files a case: into `cases` when draw's answer is the exact one, else into `apart` with both and every
+ * reason. `rule` is draw's rule computed exactly, and `ruleReason` names how that rule differs from
+ * snap-grid's (`domain` or `beyond`) where it does; a field where draw differs from its own rule rounds.
+ */
+function file(entry, reference, exact, rule = exact, ruleReason = null) {
+	if (same(reference, exact)) {
+		cases.push({ ...entry, answer: exact });
+		return;
+	}
+	const reasons = new Set();
+	const [r, e, x] = [reference, exact, rule].map((v) => new Map(leaves(v)));
+	const shaped = [...r.keys()].join() === [...e.keys()].join() && [...e.keys()].join() === [...x.keys()].join();
+	if (shaped) {
+		for (const [at, value] of r) {
+			if (Object.is(value, e.get(at))) continue;
+			if (!Object.is(value, x.get(at))) reasons.add("rounding");
+			if (!Object.is(x.get(at), e.get(at))) reasons.add(ruleReason);
+		}
+	} else {
+		if (!same(reference, rule)) reasons.add("rounding");
+		if (!same(rule, exact)) reasons.add(ruleReason);
+	}
+	if (reasons.size === 0 || reasons.has(null)) throw new Error(`generate-i10-corpus: no reason for ${JSON.stringify(entry)}`);
+	apart.push({ ...entry, reasons: REASONS.filter((reason) => reasons.has(reason)), referenceAnswer: reference, answer: exact });
 }
 
 const LIMIT = 2 ** 50;
@@ -163,14 +193,14 @@ for (const g of ["n", "z"]) {
 		const reference = { position: { col: (s.x - L[g].offset) / GAP, row: (s.y - L[g].offset) / GAP }, point: { x: s.x, y: s.y } };
 		const exact = exactNearest(bounded, point);
 		const lat = latticeNearest(bounded, point);
-		file({ question: "nearest", grid: gridOf[`${g}b`], point }, reference, { position: exact, point: exactPoint(bounded, exact) }, { position: lat, point: exactPoint(bounded, lat) });
+		file({ question: "nearest", grid: gridOf[`${g}b`], point }, reference, { position: exact, point: exactPoint(bounded, exact) }, { position: lat, point: exactPoint(bounded, lat) }, "domain");
 	}
 	for (const point of pointsFor(g, 1400)) {
 		const a = nearestAnchor(L[g], point.x, point.y);
 		const reference = { position: { col: a.cx, row: a.cy }, point: { x: a.x, y: a.y } };
 		const exact = exactNearest(unbounded, point);
 		const lat = latticeNearest(unbounded, point);
-		file({ question: "nearest", grid: gridOf[`${g}u`], point }, reference, { position: exact, point: exactPoint(unbounded, exact) }, { position: lat, point: exactPoint(unbounded, lat) });
+		file({ question: "nearest", grid: gridOf[`${g}u`], point }, reference, { position: exact, point: exactPoint(unbounded, exact) }, { position: lat, point: exactPoint(unbounded, lat) }, "domain");
 	}
 }
 
@@ -247,25 +277,40 @@ for (const record of records) {
 	const declaration = grids[gridOf.zb];
 	const free = grids[gridOf.zu];
 	const edges = [...coordinates.z.x.filter((v) => Math.abs(v) <= 1200), ...coordinates.z.x.filter(() => rnd() < 0.15)];
+	const rects = [];
 	for (let i = 0; i < 900; i++) {
-		const x = pick(edges), y = pick(edges);
 		const w = pick([0, 0, int(0, 300), rnd() * 300, 60, 30, 2 ** -int(1, 40), int(0, 2400)]);
 		const h = pick([0, int(0, 300), rnd() * 300, 60, 30, 2 ** -int(1, 40), int(0, 1200)]);
-		const rect = { kind: "rect", x, y, w, h };
-		const right = x + w, bottom = y + h;
+		rects.push({ kind: "rect", x: pick(edges), y: pick(edges), w, h });
+	}
+	// rects wholly beyond one side, which the wrap is never given
+	for (let i = 0; i < 120; i++) {
+		const side = i % 4;
+		const far = pick([int(1, 100), int(1, 2000), rnd() * 500, 2 ** int(11, 49), 0.5]);
+		const w = pick([0, int(0, 300), rnd() * 120]), h = pick([0, int(0, 300), rnd() * 120]);
+		const along = (ext) => sign() * rnd() * (ext + 60);
+		const x = side === 0 ? ZONE_EXT.x + far : side === 1 ? -ZONE_EXT.x - far - w : along(ZONE_EXT.x);
+		const y = side === 2 ? ZONE_EXT.y + far : side === 3 ? -ZONE_EXT.y - far - h : along(ZONE_EXT.y);
+		rects.push({ kind: "rect", x, y, w, h });
+	}
+	const floorOf = (v) => Number(exactIndices(v, HALF, GAP).floor) + 0;
+	const ceilOf = (v) => Number(exactIndices(v, HALF, GAP).ceil) + 0;
+	const [cl, ch] = offeredRange(declaration, "x").map(Number), [rl, rh] = offeredRange(declaration, "y").map(Number);
+	for (const rect of rects) {
+		const { x, y } = rect;
+		const right = x + rect.w, bottom = y + rect.h;
 		if (![x, y, right, bottom].every((v) => Math.abs(v) <= LIMIT)) continue;
 		// unbounded: the floor and ceiling alone (:28-29)
 		const ru = { from: { col: (floorZ(x) - HALF) / GAP, row: (floorZ(y) - HALF) / GAP }, to: { col: (ceilZ(right) - HALF) / GAP, row: (ceilZ(bottom) - HALF) / GAP } };
-		const lu = { from: { col: Number(exactIndices(x, HALF, GAP).floor) + 0, row: Number(exactIndices(y, HALF, GAP).floor) + 0 }, to: { col: Number(exactIndices(right, HALF, GAP).ceil) + 0, row: Number(exactIndices(bottom, HALF, GAP).ceil) + 0 } };
-		file({ question: "enclosing", grid: gridOf.zu, rect }, ru, exactEnclosing(free, rect), lu);
-		// bounded: with the clamps (:30-33), for a rect not wholly beyond a side, which the wrap never meets
-		if (x > ZONE_EXT.x || y > ZONE_EXT.y || right < -ZONE_EXT.x || bottom < -ZONE_EXT.y) continue;
+		const lu = { from: { col: floorOf(x), row: floorOf(y) }, to: { col: ceilOf(right), row: ceilOf(bottom) } };
+		file({ question: "enclosing", grid: gridOf.zu, rect }, ru, exactEnclosing(free, rect), lu, "domain");
+		// bounded: with the clamps (:30-33), the low edge clamped only from below and the high edge only from above
 		const rb = {
 			from: { col: (Math.max(floorZ(x), -ZONE_EXT.x) - HALF) / GAP, row: (Math.max(floorZ(y), -ZONE_EXT.y) - HALF) / GAP },
 			to: { col: (Math.min(ceilZ(right), ZONE_EXT.x) - HALF) / GAP, row: (Math.min(ceilZ(bottom), ZONE_EXT.y) - HALF) / GAP },
 		};
-		const exact = exactEnclosing(declaration, rect);
-		file({ question: "enclosing", grid: gridOf.zb, rect }, rb, exact, exact);
+		const lb = { from: { col: Math.max(floorOf(x), cl), row: Math.max(floorOf(y), rl) }, to: { col: Math.min(ceilOf(right), ch), row: Math.min(ceilOf(bottom), rh) } };
+		file({ question: "enclosing", grid: gridOf.zb, rect }, rb, exactEnclosing(declaration, rect), lb, "beyond");
 	}
 }
 
@@ -292,10 +337,10 @@ const encode = (v) => JSON.stringify(v, (k, x) => (Object.is(x, -0) ? "-0" : x))
 const counts = {};
 for (const c of cases) counts[c.question] = (counts[c.question] ?? 0) + 1;
 const apartCounts = {};
-for (const c of apart) apartCounts[`${c.question} ${c.reason}`] = (apartCounts[`${c.question} ${c.reason}`] ?? 0) + 1;
+for (const c of apart) apartCounts[`${c.question} ${c.reasons.join("+")}`] = (apartCounts[`${c.question} ${c.reasons.join("+")}`] ?? 0) + 1;
 const lines = [
 	"{",
-	`  "about": ${encode("Square-grid cases: each asks a grid a question and gives the answer. Numbers are JSON numbers, except -0, written as the string \"-0\". Cases in apart give a reference answer that differs from the exact one, and the reason.")},`,
+	`  "about": ${encode("Square-grid cases: each asks a grid a question and gives the answer. Numbers are JSON numbers, except -0, written as the string \"-0\". Cases in apart give a reference answer that differs from the exact one, and every reason: rounding, domain or beyond.")},`,
 	`  "grids": {`,
 	Object.entries(grids).map(([k, v]) => `    ${encode(k)}: ${encode(v)}`).join(",\n"),
 	"  },",
