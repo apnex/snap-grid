@@ -74,12 +74,32 @@ function readPosition(fn, p) {
 	return p.slot;
 }
 
-function readRect(fn, r) {
-	const keys = isPlain(r) ? Reflect.ownKeys(r) : [];
-	if (keys.length !== 5 || !["kind", "x", "y", "w", "h"].every((k) => keys.includes(k)) || r.kind !== "rect" || ["x", "y", "w", "h"].some((k) => typeof r[k] !== "number") || r.w < 0 || r.h < 0) {
-		throw typeError(fn, "rect must be a plain object of exactly kind 'rect', x, y, w and h");
+const exactly = (v, required, optional = []) => {
+	if (!isPlain(v)) return false;
+	const keys = Reflect.ownKeys(v);
+	return keys.every((k) => required.includes(k) || optional.includes(k)) && required.every((k) => keys.includes(k));
+};
+
+function readRect(fn, r, label = "rect") {
+	if (!exactly(r, ["kind", "x", "y", "w", "h"]) || r.kind !== "rect" || ["x", "y", "w", "h"].some((k) => typeof r[k] !== "number") || !(r.w >= 0) || !(r.h >= 0)) {
+		throw typeError(fn, `${label} must be a plain object of exactly kind 'rect', x, y, w and h, numbers, w and h each at least 0`);
 	}
 	return r;
+}
+
+// SG6's checks of a view and its options
+function readView(fn, view, options) {
+	if (!exactly(view, ["region", "scale"])) throw typeError(fn, "view must be a plain object of exactly region and scale");
+	const r = readRect(fn, view.region, "view.region");
+	if (![r.x, r.y, r.w, r.h, r.x + r.w, r.y + r.h].every(Number.isFinite)) throw typeError(fn, "view.region must have finite x, y, w, h, x + w and y + h");
+	if (typeof view.scale !== "number" || !Number.isFinite(view.scale) || !(view.scale > 0)) throw typeError(fn, "view.scale must be a finite number above 0");
+	if (options === undefined) return { r, scale: view.scale, minSpacing: 0, max: 10000 };
+	if (!exactly(options, [], ["minSpacing", "max"])) throw typeError(fn, "options must be a plain object of minSpacing, max, both or neither");
+	const minSpacing = "minSpacing" in options ? options.minSpacing : 0;
+	const max = "max" in options ? options.max : 10000;
+	if (typeof minSpacing !== "number" || !Number.isFinite(minSpacing) || !(minSpacing >= 0)) throw typeError(fn, "options.minSpacing must be a finite number at least 0");
+	if (typeof max !== "number" || !Number.isInteger(max) || max < 1 || max > 2 ** 32 - 1) throw typeError(fn, "options.max must be an integer from 1 to 2^32 - 1");
+	return { r, scale: view.scale, minSpacing, max };
 }
 
 function readDirection(fn, d) {
@@ -148,10 +168,7 @@ function makeGrid(declaration) {
 			return s === null ? null : position(s);
 		},
 		inView(view, options) {
-			if (!isPlain(view) || !("region" in view) || !("scale" in view)) throw typeError("inView", "view must be a plain object of exactly region and scale");
-			const r = readRect("inView", view.region);
-			const minSpacing = options?.minSpacing ?? 0;
-			const max = options?.max ?? 10000;
+			const { r, scale, minSpacing, max } = readView("inView", view, options);
 			const within = [];
 			for (let s = 0; s < slots; s++) if (inRect(r, points[s])) within.push(s);
 			const kept = (stride) => within.filter((s) => s % stride === 0);
@@ -159,7 +176,7 @@ function makeGrid(declaration) {
 				for (let i = 0; i < list.length; i++) {
 					for (let j = i + 1; j < list.length; j++) {
 						const a = points[list[i]], b = points[list[j]];
-						if (!(Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) * view.scale >= minSpacing)) return false;
+						if (!(Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) * scale >= minSpacing)) return false;
 					}
 				}
 				return true;

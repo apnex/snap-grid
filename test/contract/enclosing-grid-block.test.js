@@ -44,13 +44,15 @@ test("SG9: rects touching, straddling and beyond every edge", () => {
 	assert.deepStrictEqual(g.enclosing(rect(-L, -L, 2 * L, 2 * L)), block(-16, -9, 15, 8));
 });
 
-test("SG9: an edge not finite or outside the domain answers null; NaN w is such an edge", () => {
+test("SG9: an edge not finite or outside the domain answers null; an infinite w is such an edge, a NaN w or h is malformed", () => {
 	const g = open(bounded);
-	for (const r of [rect(NaN, 0, 1, 1), rect(0, Infinity, 0, 0), rect(-Infinity, 0, 1, 1), rect(0, 0, Infinity, 1), rect(0, 0, NaN, 1), rect(nextUp(L), 0, 0, 0), rect(L, 0, 1, 0), rect(0, nextDown(-L), 0, 0), rect(0, 0, 2 ** 51, 0)]) {
+	for (const r of [rect(NaN, 0, 1, 1), rect(0, Infinity, 0, 0), rect(-Infinity, 0, 1, 1), rect(0, 0, Infinity, 1), rect(0, 0, 1, Infinity), rect(nextUp(L), 0, 0, 0), rect(L, 0, 1, 0), rect(0, nextDown(-L), 0, 0), rect(0, 0, 2 ** 51, 0)]) {
 		assert.equal(g.enclosing(r), null, JSON.stringify(r));
 	}
 	assert.notEqual(g.enclosing(rect(-L, -L, 2 * L, 2 * L)), null);
-	assert.throws(() => g.enclosing(rect(0, 0, -1, 0)), (e) => e instanceof TypeError && e.message.startsWith("enclosing"));
+	for (const r of [rect(0, 0, -1, 0), rect(0, 0, NaN, 1), rect(0, 0, 1, NaN), rect(0, 0, -Infinity, 0)]) {
+		assert.throws(() => g.enclosing(r), (e) => e instanceof TypeError && e.message.startsWith("enclosing"), JSON.stringify(r));
+	}
 });
 
 test("SG2, SG9: enclosing equals the exact oracle over random grids, edge-targeted rects, and draw's wrap counterexample", () => {

@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { openGrid } from "@apnex/snap-grid";
+import { openGrid, square } from "@apnex/snap-grid";
+import { checkGridShape } from "@apnex/snap-grid/conformance";
 import { isFrozenToDepth } from "../support/answers.js";
 
 const opened = openGrid({ shape: "square", pitch: 60, origin: { x: 30, y: 30 }, bounds: { min: { x: -930, y: -510 }, max: { x: 930, y: 510 } } });
@@ -39,7 +40,7 @@ const withSymbol = (o) => Object.assign({ ...o }, { [Symbol("extra")]: 1 });
 
 const BAD_POINTS = [undefined, null, 5, "p", true, { x: 1 }, { y: 1 }, { x: "1", y: 1 }, { x: 1, y: 1n }, { x: null, y: 0 }, () => 0];
 const BAD_POSITIONS = [undefined, null, 5, {}, { col: 0 }, { row: 0 }, { col: 0, row: 0, z: 0 }, { col: "0", row: 0 }, { col: 0.5, row: 0 }, { col: 2 ** 53, row: 0 }, { col: NaN, row: 0 }, { col: Infinity, row: 0 }, [0, 0], Object.create({ col: 0, row: 0 }), accessor("col", 0, { col: 0, row: 0 }), withSymbol({ col: 0, row: 0 })];
-const BAD_RECTS = [undefined, null, 5, {}, rect(0, 0, -1, 0), rect(0, 0, 0, -0.5), rect("0", 0, 0, 0), rect(0, 0, 0, null), { ...rect(0, 0, 0, 0), kind: "square" }, { x: 0, y: 0, w: 0, h: 0 }, { ...rect(0, 0, 0, 0), extra: 1 }, accessor("w", 1, rect(0, 0, 0, 0)), Object.create(rect(0, 0, 0, 0)), withSymbol(rect(0, 0, 0, 0)), rect(0, 0, -Infinity, 0)];
+const BAD_RECTS = [undefined, null, 5, {}, rect(0, 0, -1, 0), rect(0, 0, 0, -0.5), rect(0, 0, NaN, 0), rect(0, 0, 0, NaN), rect("0", 0, 0, 0), rect(0, 0, 0, null), { ...rect(0, 0, 0, 0), kind: "square" }, { x: 0, y: 0, w: 0, h: 0 }, { ...rect(0, 0, 0, 0), extra: 1 }, accessor("w", 1, rect(0, 0, 0, 0)), Object.create(rect(0, 0, 0, 0)), withSymbol(rect(0, 0, 0, 0)), rect(0, 0, -Infinity, 0)];
 const BAD_DIRECTIONS = [undefined, null, "", "x", "+X", "+z", "constructor", 1];
 
 test("Errors: nearest and positionAt refuse every malformed point", () => {
@@ -73,7 +74,7 @@ test("Errors: enclosing and regionContains refuse every malformed rect", () => {
 		refuses("enclosing", () => grid.enclosing(r), JSON.stringify(r));
 		refuses("regionContains", () => grid.regionContains(r, { x: 0, y: 0 }), JSON.stringify(r));
 	}
-	assert.equal(grid.enclosing(rect(0, 0, NaN, 0)), null, "NaN is not less than 0, so the rect is well formed and its edge not finite");
+	assert.equal(grid.enclosing(rect(0, 0, Infinity, 0)), null, "an infinite w is well formed, and its edge is not finite");
 	assert.equal(grid.enclosing(rect(Infinity, 0, 0, 0)), null);
 });
 
@@ -100,6 +101,29 @@ test("Errors: a well-formed position that is not representable is a RangeError f
 test("Errors: openGrid never throws for a declaration, only for malformed options", () => {
 	for (const d of [undefined, null, () => 0, Symbol("s"), 1n, new Map(), { shape: "square", pitch: () => 60, origin: { x: 0, y: 0 } }]) assert.doesNotThrow(() => openGrid(d));
 	assert.throws(() => openGrid({}, { shapes: "x" }), (e) => e instanceof TypeError && e.message.startsWith("openGrid:"));
+});
+
+test("Errors: a getter's or a Proxy trap's own error, met while an argument is read, is rethrown as the function's TypeError", () => {
+	const getterThrows = { get x() { throw new Error("boom"); }, y: 0 };
+	const trapThrows = new Proxy({ x: 0, y: 0 }, { get() { throw new Error("trap"); } });
+	const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+	revoke();
+	for (const p of [getterThrows, trapThrows, revoked]) {
+		refuses("nearest", () => grid.nearest(p), "a point that throws");
+		refuses("positionAt", () => grid.positionAt(p), "a point that throws");
+		refuses("regionContains", () => grid.regionContains(rect(0, 0, 1, 1), p), "a point that throws");
+	}
+	refuses("pointOf", () => grid.pointOf(revoked), "a revoked position");
+	refuses("offers", () => grid.offers(new Proxy({ col: 0, row: 0 }, { ownKeys() { throw new Error("trap"); } })), "a position whose keys throw");
+	refuses("enclosing", () => grid.enclosing(revoked), "a revoked rect");
+	refuses("inView", () => grid.inView({ region: revoked, scale: 1 }), "a revoked region");
+	refuses("inView", () => grid.inView({ region: rect(0, 0, 1, 1), scale: 1 }, revoked), "revoked options");
+	refuses("openGrid", () => openGrid({ shape: "square" }, revoked), "revoked options");
+	refuses("openGrid", () => openGrid({ shape: "square" }, { shapes: revoked }), "a revoked shapes array");
+	refuses("openGrid", () => openGrid({ shape: "square" }, { shapes: new Proxy([], { get() { throw new Error("trap"); } }) }), "a shapes array that throws");
+	refuses("checkGridShape", () => checkGridShape(square, revoked), "revoked cases");
+	refuses("checkGridShape", () => checkGridShape(revoked, []), "a revoked shape");
+	refuses("checkGridShape", () => checkGridShape(square, [{ name: "c", declaration: {}, points: revoked, positions: [], views: [], blocks: [], rects: [] }]), "revoked points");
 });
 
 test("A point may be any object with number x and y: a DOMPoint-like, an entity, a null-prototype object", () => {

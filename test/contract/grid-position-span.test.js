@@ -92,7 +92,8 @@ test("SG8: regionContains on each edge and just beyond it, the edges as binary64
 	assert.equal(1 + 2 ** -60, 1, "the edge as binary64 computes it is x itself");
 	assert.equal(g.regionContains(tiny, { x: 1, y: 0 }), true);
 	assert.equal(g.regionContains(tiny, { x: nextUp(1), y: 0 }), false);
-	assert.equal(g.regionContains(rect(0, 0, NaN, 0), { x: 0, y: 0 }), false);
+	assert.throws(() => g.regionContains(rect(0, 0, NaN, 0), { x: 0, y: 0 }), (e) => e instanceof TypeError && e.message.startsWith("regionContains"));
+	assert.equal(g.regionContains(rect(0, 0, Infinity, 0), { x: 1e300, y: 0 }), true);
 	assert.equal(g.regionContains(rect(-Infinity, 0, Infinity, 0), { x: 0, y: 0 }), false);
 	assert.equal(g.regionContains(rect(-Infinity, 0, 0, 0), { x: -Infinity, y: 0 }), true);
 	const s = g.span({ col: -1, row: 0 }, { col: 1, row: 1 });

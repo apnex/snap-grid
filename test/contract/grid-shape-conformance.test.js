@@ -201,7 +201,9 @@ test("SG11: a span anchored at its first argument fails I6 for each block it is 
 
 test("SG11: a stride that is no power of two, and an answer past max, fail I4", () => {
 	const three = mutant("three", (g) => ({ inView: (v, o) => Object.freeze({ ...g.inView(v, o), stride: 3 }) }));
-	assert.deepEqual(listed(checkGridShape(three, [squareCase()])), VIEWS.map((v) => ({ invariant: "I4", case: "bounded", args: v.options ? [v.view, v.options] : [v.view] })));
+	assert.deepEqual(listed(checkGridShape(three, [squareCase()])), VIEWS.map((v) => ({ invariant: "I4", case: "bounded", args: [v.view, v.options] })));
+	assert.equal(checkGridShape(three, [squareCase()])[0].args.length, 2, "I4's args have the table's length, options undefined when the pair has none");
+	assert.equal(checkGridShape(three, [squareCase()])[0].args[1], undefined);
 	const greedy = mutant("greedy", (g) => ({ inView: (v) => g.inView(v) }));
 	assert.deepEqual(listed(checkGridShape(greedy, [squareCase()])), [{ invariant: "I4", case: "bounded", args: [VIEWS[2].view, VIEWS[2].options] }]);
 });
@@ -232,6 +234,74 @@ test("SG11: the failure list is fresh and frozen, its args copies; nothing the c
 	assert.notEqual(failures[0].args[1], POS[0]);
 	assert.ok(!Object.isFrozen(c) && !Object.isFrozen(POS[0]) && !Object.isFrozen(POINTS) && !Object.isFrozen(DECLARATION));
 	assert.notEqual(checkGridShape(square, [c]), checkGridShape(square, [c]));
+});
+
+test("SG11: open's answer must be of SG1's form, frozen and fresh; a failure there is the case's one failure", () => {
+	const wrap = (name, make) => Object.freeze({ name, open: (d) => make(square.open(d)) });
+	let cached = null;
+	const shapes = {
+		"an unfrozen answer": wrap("a", (r) => ({ ok: r.ok, grid: r.grid })),
+		"an unfrozen grid": wrap("b", (r) => Object.freeze({ ok: true, grid: { ...r.grid } })),
+		"an unfrozen declaration": wrap("c", (r) => Object.freeze({ ok: true, grid: Object.freeze({ ...r.grid, declaration: { ...r.grid.declaration } }) })),
+		"another property": wrap("d", (r) => Object.freeze({ ...r, more: 1 })),
+		"no ok": wrap("e", (r) => Object.freeze({ grid: r.grid })),
+		"the same answer twice": wrap("f", (r) => (cached ??= r)),
+		"the same grid twice": wrap("g", (r) => { cached ??= r; return Object.freeze({ ok: true, grid: cached.grid }); }),
+	};
+	for (const [label, shape] of Object.entries(shapes)) {
+		cached = null;
+		const failures = checkGridShape(shape, [squareCase(), squareCase("again")]);
+		assert.deepEqual(listed(failures), [{ invariant: "open", case: "bounded", args: [DECLARATION] }, { invariant: "open", case: "again", args: [DECLARATION] }], label);
+	}
+	assert.deepEqual(checkGridShape(square, [squareCase()]), []);
+});
+
+test("SG11: a throwing accessor or Proxy in a shape's answer, grid or directions is a failure, and the kit never throws", () => {
+	const throwing = (target, names) => new Proxy(target, { get(t, k, r) { if (names.includes(k)) throw new Error(`no ${String(k)}`); return Reflect.get(t, k, r); } });
+	const okThrows = Object.freeze({ name: "ok-throws", open: () => Object.freeze(throwing({ ok: true, grid: {} }, ["ok"])) });
+	assert.deepEqual(checkGridShape(okThrows, [squareCase()]), [{ invariant: "open", case: "bounded", args: [DECLARATION], got: { thrown: "no ok" } }]);
+	const directionsThrow = Object.freeze({ name: "directions-throw", open: (d) => Object.freeze({ ok: true, grid: throwing(square.open(d).grid, ["directions"]) }) });
+	assert.deepEqual(checkGridShape(directionsThrow, [squareCase()]), [{ invariant: "I5", case: "bounded", args: [], got: { thrown: "no directions" } }]);
+	const accessorShape = Object.freeze({ name: "accessor", open(d) {
+		const g = { ...square.open(d).grid };
+		delete g.directions;
+		Object.defineProperty(g, "directions", { enumerable: true, get() { throw new Error("no directions"); } });
+		return Object.freeze({ ok: true, grid: Object.freeze(g) });
+	} });
+	assert.deepEqual(listed(checkGridShape(accessorShape, [squareCase()])), [{ invariant: "I5", case: "bounded", args: [] }]);
+	const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+	revoke();
+	const revokedAnswers = mutant("revoked", () => ({ enclosing: () => revoked, nearest: (q) => (q.x === 0 ? revoked : square.open(DECLARATION).grid.nearest(q)) }));
+	const failures = checkGridShape(revokedAnswers, [squareCase()]);
+	assert.ok(failures.some((f) => f.invariant === "I7" && f.args[0] === "enclosing"));
+	assert.ok(failures.some((f) => f.invariant === "I8"));
+	assert.ok(failures.some((f) => f.invariant === "I2" && f.args[0].x === 0 && f.args[0].y === 0));
+	assert.ok(isFrozenToDepth(failures));
+	const memberThrows = Object.freeze({ name: "member-throws", open: (d) => Object.freeze({ ok: true, grid: throwing(square.open(d).grid, ["inView", "span"]) }) });
+	const listedThrows = listed(checkGridShape(memberThrows, [squareCase()]));
+	assert.deepEqual(listedThrows.filter((f) => f.invariant === "I4").length, VIEWS.length);
+	assert.ok(listedThrows.some((f) => f.invariant === "I7" && f.args[0] === "inView"));
+	assert.ok(listedThrows.some((f) => f.invariant === "I6"));
+});
+
+test("SG11: a failure's args copy a point as { x, y } alone, and every other argument as its plain data", () => {
+	const naive = mutant("naive-entity", (g) => ({
+		nearest(q) {
+			const n = g.nearest(q);
+			return q.x === P1.x && n ? Object.freeze({ col: n.col + 1, row: n.row }) : n;
+		},
+	}));
+	const entity = { id: "e-1", kind: "thing", x: P1.x, y: P1.y, size: { w: 1 } };
+	const c = { ...squareCase(), points: [entity, new PointLike(P1.x, P1.y)] };
+	const failures = checkGridShape(naive, [c]);
+	const pointArgs = failures.filter((f) => ["I2", "I3"].includes(f.invariant) || (f.invariant === "I7" && ["nearest", "positionAt"].includes(f.args[0]))).map((f) => (f.invariant === "I7" ? f.args[1] : f.args[0]));
+	assert.ok(pointArgs.length > 0);
+	for (const a of pointArgs) assert.deepStrictEqual(Object.keys(a), ["x", "y"]);
+	const unfrozenView = mutant("unfrozen-view", (g) => ({ inView: (v, o) => ({ ...g.inView(v, o) }) }));
+	const views = listed(checkGridShape(unfrozenView, [squareCase()])).filter((f) => f.invariant === "I7");
+	assert.deepEqual(views, VIEWS.map((v) => ({ invariant: "I7", case: "bounded", args: ["inView", v.view, v.options] })));
+	assert.equal(views[0].args.length, 3, "inView is always called, and recorded, with its options, undefined when the pair has none");
+	assert.ok(!Object.isFrozen(entity) && !Object.isFrozen(entity.size));
 });
 
 test("SG11: checkGridShape refuses a malformed shape or case with a TypeError naming it", () => {

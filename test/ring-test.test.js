@@ -108,3 +108,15 @@ test("ring-test: enclosing gives a zero-size rect at a slot's point that slot, a
 	assert.equal(g.enclosing(rect(p.x + 1, p.y, 0, 0)), null);
 	assert.equal(g.enclosing(rect(-200, -200, 400, 400)), null);
 });
+
+test("ring-test: inView checks its view and options as SG6 does", () => {
+	const g = open();
+	const good = { region: rect(-10, -10, 20, 20), scale: 1 };
+	const refuses = (view, options, label) => assert.throws(() => g.inView(view, options), (e) => e instanceof TypeError && e.message.startsWith("inView:"), label);
+	for (const scale of [0, -1, NaN, Infinity, "1"]) refuses({ region: good.region, scale }, undefined, `scale ${scale}`);
+	for (const region of [rect(0, 0, -1, 0), rect(0, 0, NaN, 0), rect(Infinity, 0, 0, 0), rect(1e308, 0, 1e308, 0), { x: 0, y: 0, w: 1, h: 1 }]) refuses({ region, scale: 1 }, undefined, JSON.stringify(region));
+	refuses({ ...good, more: 1 }, undefined, "another property");
+	for (const options of [null, { minSpacing: -1 }, { minSpacing: Infinity }, { max: 0 }, { max: 1.5 }, { max: 2 ** 32 }, { other: 1 }]) refuses(good, options, JSON.stringify(options));
+	assert.ok(g.inView(good, { minSpacing: 0, max: 2 ** 32 - 1 }));
+	assert.ok(g.inView(good, undefined));
+});

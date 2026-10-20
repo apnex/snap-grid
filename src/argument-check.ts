@@ -2,9 +2,11 @@
  * Argument checks shared by every function (CONTRACT.md, "Errors"): a malformed argument throws a
  * TypeError whose message begins with the function's name.
  *
- * A point may be any object, of any prototype, with number properties x and y, read once each through
- * ordinary property access, because consumers pass what they hold. Every other argument is a plain
- * object holding exactly the properties its form names, read through their descriptors.
+ * A point is a non-null value of type object, of any prototype, with number properties x and y, read
+ * once each through ordinary property access, because consumers pass what they hold; a function is not
+ * a point. Every other argument is a plain object holding exactly the properties its form names, read
+ * through their descriptors. An error a getter or a Proxy trap throws while an argument is read is
+ * rethrown as the function's own TypeError.
  */
 import { exactRecord } from "./plain-data.js";
 import type { InViewOptions } from "./types.js";
@@ -14,21 +16,53 @@ export function malformed(fn: string, what: string): TypeError {
 	return new TypeError(`${fn}: ${what}`);
 }
 
+const messageOf = (e: unknown): string => {
+	try {
+		return e instanceof Error ? e.message : String(e);
+	} catch {
+		return "an unreadable error";
+	}
+};
+
 /** The x and y of a point, read once each, or a TypeError. */
 export function readPoint(fn: string, point: unknown, label = "point"): { readonly x: number; readonly y: number } {
-	if (typeof point !== "object" || point === null) throw malformed(fn, `${label} must be an object with number properties x and y`);
-	const { x, y } = point as { x: unknown; y: unknown };
-	if (typeof x !== "number" || typeof y !== "number") throw malformed(fn, `${label} must be an object with number properties x and y`);
+	const form = `${label} must be a non-null object, not a function, with number properties x and y`;
+	if (typeof point !== "object" || point === null) throw malformed(fn, form);
+	let x: unknown, y: unknown;
+	try {
+		({ x, y } = point as { x: unknown; y: unknown });
+	} catch (e) {
+		throw malformed(fn, `${label} could not be read: ${messageOf(e)}`);
+	}
+	if (typeof x !== "number" || typeof y !== "number") throw malformed(fn, form);
 	return { x, y };
 }
 
-/** A rect as section 3.3 forms it: exactly kind 'rect', x, y, w and h, numbers, w and h not less than 0. */
+/** The elements of an array, read once each, or a TypeError. */
+export function readArray(fn: string, value: unknown, label: string): unknown[] {
+	let isArray = false;
+	const out: unknown[] = [];
+	try {
+		isArray = Array.isArray(value);
+		if (isArray) {
+			const list = value as unknown[];
+			const length = list.length;
+			for (let i = 0; i < length; i++) out.push(list[i]);
+		}
+	} catch (e) {
+		throw malformed(fn, `${label} could not be read: ${messageOf(e)}`);
+	}
+	if (!isArray) throw malformed(fn, `${label} must be an array`);
+	return out;
+}
+
+/** A rect: exactly kind 'rect', x, y, w and h, each a number, w and h each at least 0, so neither NaN; infinities are well formed. */
 export function readRect(fn: string, rect: unknown, label = "rect"): { readonly x: number; readonly y: number; readonly w: number; readonly h: number } {
 	const r = exactRecord(rect, ["kind", "x", "y", "w", "h"]);
-	const form = `${label} must be a plain object of exactly kind 'rect', x, y, w and h, each of x, y, w and h a number, w and h not less than 0`;
+	const form = `${label} must be a plain object of exactly kind 'rect', x, y, w and h, each of x, y, w and h a number, w and h each at least 0`;
 	if (r === null || r.get("kind") !== "rect") throw malformed(fn, form);
 	const x = r.get("x"), y = r.get("y"), w = r.get("w"), h = r.get("h");
-	if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number" || w < 0 || h < 0) throw malformed(fn, form);
+	if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number" || !(w >= 0) || !(h >= 0)) throw malformed(fn, form);
 	return { x, y, w, h };
 }
 
