@@ -208,6 +208,7 @@ So is an answer from `open` that is not of SG1's form, `{ ok: true, grid }` or `
 
 The kit's rules where the table leaves a choice:
 - a case position is selected for I1 and I5 when `offers` answers exactly `true`; one whose `offers` throws is not selected there, and I7's schedule, which calls `offers` for every case position, records the throw;
+- I2 asks `offers` of each case position inside each point's tuple, so an `offers` that throws there fails that tuple;
 - I4's `args` are always `[view, options]`, and the kit calls `inView(view, options)` in I4 and in I7 alike, `options` being `undefined` when the case's pair has none;
 - answers are compared by value, `-0` equal to `0`, except within I7, whose two answers are compared with `Object.is`, the same keys in the same order and the same prototype;
 - a rect's membership is computed by the kit, its edges as binary64 computes them, and a region of any other kind is asked of the grid's `regionContains`;

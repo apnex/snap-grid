@@ -61,10 +61,13 @@ Where the design left a choice open, the build made these; each that a test can 
 - The vocabulary check compares each run whole, without its underscores and hyphens, and split at case changes, underscores, hyphens and digits, a trailing `s` or `es` removed.
 - The vocabulary check cannot split a listed word inside one run of lower-case letters, such as `zonegrid`, and does not catch it.
 - The vocabulary check has no allowance mechanism yet; the first listed word a component needs brings one, allowed by name here.
-- The runtime check tokenizes with TypeScript's scanner; a `/` after a value divides and anywhere else begins a regular expression.
-- The runtime check does not count a name read as a member, after `.` or `?.`, and does count one written as an object key.
+- The runtime check walks TypeScript's syntax tree of each built file (`ts.createSourceFile`, `ScriptKind.JS`, as a module), so a regular expression is never read as division.
+- The runtime check counts every identifier but a property access's name, so an object key such as `{ self: 1 }` counts; a file that does not parse fails.
 - The package's `files` are `dist` and the documents `README.md`, `VISION.md`, `CONTRACT.md` and `LICENSE`.
+- A source map's `sources` (`../src/*.ts`) are labels for its inlined `sourcesContent`, not files the release must hold.
 - The style checks run over every Markdown file git would keep, tracked, or untracked and not ignored.
 - `CONTRACT.md` replaces the design's section references with its own, holds section 4's invariants, and adds the Requires and Trait columns.
 - `README.md` names no version: a consumer writes the release it chooses from the repository's Releases page.
 - The workflows pin every action by its full commit SHA, the tag named beside it, and every `gh` call names the repository.
+- A release refuses a version outside `0.x`, by D9, and packs once: the consumer test installs the very file the draft attaches.
+- GitHub keeps one pending release run per repository: a third tag pushed while one waits cancels the waiting run, which is re-run by hand.

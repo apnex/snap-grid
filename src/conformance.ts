@@ -12,7 +12,8 @@
  *   grid's declaration to its depth -- and fresh: two calls give two different answers and grids;
  * - "each case position offers accepts" means offers answering exactly true; a position whose offers
  *   throws is not selected for I1 or I5, and I7's schedule, which calls offers for every case position,
- *   records the throw;
+ *   records the throw; I2 asks offers of each case position inside each point's tuple, so an offers that
+ *   throws there fails that tuple;
  * - I4's args, and I7's inView call, are always [view, options], options undefined when a pair has none;
  * - the kit judges membership of a rect itself, its edges x, y, x + w and y + h as binary64 computes
  *   them, and asks the grid's regionContains for a region of any other kind;

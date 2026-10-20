@@ -2,7 +2,7 @@
 
 Answer, for a grid declared as data, where its positions lie in a plane and which position lies nearest a point.
 
-**Status: experimental until mission-kit admits it; runs in Node 22 and later, and in browsers that support ES2022 and import maps.**
+**Status: experimental until mission-kit admits it; runs in the Node versions `package.json`'s `engines` names, and in browsers that support ES2022 and import maps.**
 
 ---
 

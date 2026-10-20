@@ -36,7 +36,8 @@ The coordinates are integers and fractions of both signs, `-0`, ties and their n
 ## What it holds
 
 Every answer draw gave was compared, as the corpus was made, with the exact answer of the BigInt oracle in `test/support/oracle.js`.\
-Where they agree, the case is in `cases`; where they differ, it is in `apart`, with draw's answer as `referenceAnswer`, the exact one as `answer`, and `reasons`, every reason that applies, judged answer field by answer field.An entry with two reasons counts once under Apart and once under each of its reasons.
+Where they agree, the case is in `cases`; where they differ, it is in `apart`, with draw's answer as `referenceAnswer`, the exact one as `answer`, and `reasons`, every reason that applies, judged answer field by answer field.\
+An entry with two reasons counts once under Apart and once under each of its reasons.
 
 | Question | Cases | Apart | Rounding | Domain | Beyond |
 |---|---|---|---|---|---|
@@ -55,7 +56,8 @@ Every one lies on that grid; on the grid of origin 0, `v - 0` is exact and the d
 
 **Domain** is a point within 2^50 whose answer by draw's rule, computed exactly, lies beyond 2^50, where snap-grid clamps to the domain: on the grid of origin 30, `x = 2^50` gives `1125899906842650` from draw and `1125899906842590` from snap-grid (the design's section 6.3).
 
-**Beyond** is a rect wholly beyond one side of the bounded grid of origin 30, by at least a cell, which the zone wrap is never given: the wrap clamps its low edge only from below and its high edge only from above, so its block inverts -- `from` past `to` -- where snap-grid gives the edge position there (SG9).A rect beyond a side by less than a cell gets the same block from both.
+**Beyond** is a rect wholly beyond one side of the bounded grid of origin 30, by at least a cell, which the zone wrap is never given: the wrap clamps its low edge only from below and its high edge only from above, so its block inverts -- `from` past `to` -- where snap-grid gives the edge position there (SG9).\
+A rect beyond a side by less than a cell gets the same block from both.
 
 -0 is written as the string `"-0"`, since JSON has no negative zero, and the test reads it back as `-0`.\
 The file names no word of draw's vocabulary, which its test confirms with the vocabulary check's list.
