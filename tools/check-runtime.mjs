@@ -5,13 +5,14 @@
 // or `globalThis` -- so the whole of the module graph loads with its first import, in Node and in a
 // browser alike.
 //
-// The files are tokenized with TypeScript's own scanner (ts.createScanner), so comments, strings,
-// template literals and regular-expression literals are told apart from code; a name in a comment or a
-// string is not a finding, and an import's specifier is read from its string token. Whether a `/` begins
-// a regular expression is decided from the token before it, as a parser would: after a value -- a name,
-// a literal, `)`, `]` or `}` -- it divides, and anywhere else it begins a regular expression. A name read
-// as a member, after `.` or `?.`, is not the global. A string, template, comment or regular expression
-// the scanner reports left open fails the check rather than being guessed at.
+// Each file is parsed by TypeScript into a syntax tree (ts.createSourceFile, ScriptKind.JS, as a
+// module), so comments, strings, template literals and regular-expression literals are what the
+// language says they are, whatever token comes before them. The walk visits:
+// - every import and export declaration, whose module specifier must be a relative file;
+// - every call whose callee is the `import` keyword -- a dynamic import;
+// - every identifier, except the name of a property access (`a.self`, `a?.self`), which is a member and
+//   not the global; an object-literal key (`{ self: 1 }`) is an identifier and is counted.
+// A file TypeScript cannot parse without a diagnostic fails the check rather than being guessed at.
 //
 // Usage:  node tools/check-runtime.mjs [DIR_OR_FILE ...]    (default: dist, its .js files)
 import fs from "node:fs";
@@ -19,63 +20,40 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const K = ts.SyntaxKind;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const RUNTIME_NAMES = ["process", "require", "Buffer", "window", "document", "self", "global", "globalThis"];
 
-// a `/` after one of these divides; after anything else it begins a regular expression
-const ENDS_VALUE = new Set([
-	K.Identifier, K.PrivateIdentifier, K.NumericLiteral, K.BigIntLiteral, K.StringLiteral, K.RegularExpressionLiteral,
-	K.NoSubstitutionTemplateLiteral, K.TemplateTail, K.CloseParenToken, K.CloseBracketToken, K.CloseBraceToken,
-	K.ThisKeyword, K.SuperKeyword, K.NullKeyword, K.TrueKeyword, K.FalseKeyword, K.PlusPlusToken, K.MinusMinusToken,
-]);
-const MEMBER = new Set([K.DotToken, K.QuestionDotToken]);
-const isKeyword = (kind) => kind >= K.FirstKeyword && kind <= K.LastKeyword;
-
-/** The significant tokens of JavaScript source: [{ kind, text, value, line }], comments and whitespace left out. */
-export function tokenize(source) {
-	const errors = [];
-	const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, source, (message, length) => {
-		errors.push(`${ts.flattenDiagnosticMessageText(message.message, "\n")} (offset ${scanner.getTokenEnd?.() ?? 0}, length ${length})`);
-	});
-	const tokens = [];
-	const braces = [];
-	for (;;) {
-		let kind = scanner.scan();
-		if (kind === K.EndOfFileToken) break;
-		const prev = tokens[tokens.length - 1];
-		const beforePrev = tokens[tokens.length - 2];
-		if (kind === K.SlashToken || kind === K.SlashEqualsToken) {
-			const divides = prev !== undefined && (ENDS_VALUE.has(prev.kind) || (isKeyword(prev.kind) && beforePrev !== undefined && MEMBER.has(beforePrev.kind)));
-			if (!divides) kind = scanner.reScanSlashToken();
-		}
-		if (kind === K.OpenBraceToken || kind === K.DollarBraceToken) braces.push("code");
-		else if (kind === K.TemplateHead) braces.push("template");
-		else if (kind === K.CloseBraceToken && braces.pop() === "template") {
-			kind = scanner.reScanTemplateToken(false);
-			if (kind === K.TemplateMiddle) braces.push("template");
-		}
-		const start = scanner.getTokenStart();
-		tokens.push({ kind, text: scanner.getTokenText(), value: scanner.getTokenValue(), line: source.slice(0, start).split("\n").length });
+/** A built file's syntax tree, parsed as an ES module; throws when TypeScript reports a parse diagnostic. */
+export function parseModule(source, fileName = "built.js") {
+	const file = ts.createSourceFile(fileName, source, { languageVersion: ts.ScriptTarget.Latest, impliedNodeFormat: ts.ModuleKind.ESNext }, true, ts.ScriptKind.JS);
+	// parseDiagnostics is where createSourceFile keeps what the parser reported
+	const diagnostics = file.parseDiagnostics ?? [];
+	if (diagnostics.length) {
+		const first = diagnostics[0];
+		const line = file.getLineAndCharacterOfPosition(first.start ?? 0).line + 1;
+		throw new Error(`check-runtime: TypeScript could not parse the file: line ${line}: ${ts.flattenDiagnosticMessageText(first.messageText, " ")}`);
 	}
-	if (errors.length) throw new Error(`check-runtime: the scanner could not read the file: ${errors.join("; ")}`);
-	return tokens;
+	return file;
 }
 
-/** Every runtime finding in a built file's source: [{ line, finding }]. */
-export function findRuntimeUses(source) {
-	const tokens = tokenize(source);
+/** Every runtime finding in a built file's source: [{ line, finding }], in source order. */
+export function findRuntimeUses(source, fileName) {
+	const file = parseModule(source, fileName);
 	const found = [];
-	tokens.forEach((t, i) => {
-		const prev = tokens[i - 1];
-		const next = tokens[i + 1];
-		const asMember = prev !== undefined && MEMBER.has(prev.kind);
-		if (t.kind === K.ImportKeyword && !asMember && next?.kind === K.OpenParenToken) found.push({ line: t.line, finding: "holds a dynamic import(" });
-		const specifier = (t.kind === K.FromKeyword || (t.kind === K.ImportKeyword && !asMember)) && next?.kind === K.StringLiteral ? next.value : null;
-		if (specifier !== null && !specifier.startsWith("./") && !specifier.startsWith("../")) found.push({ line: t.line, finding: `imports "${specifier}", which is not a relative file` });
-		// require and global are contextual keywords to the scanner, so a name is any identifier or keyword token
-		if ((t.kind === K.Identifier || isKeyword(t.kind)) && !asMember && RUNTIME_NAMES.includes(t.text)) found.push({ line: t.line, finding: `names ${t.text}` });
-	});
+	const lineOf = (node) => file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+	const visit = (node) => {
+		if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+			const specifier = node.moduleSpecifier.text;
+			if (!specifier.startsWith("./") && !specifier.startsWith("../")) found.push({ line: lineOf(node), finding: `imports "${specifier}", which is not a relative file` });
+		}
+		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) found.push({ line: lineOf(node), finding: "holds a dynamic import(" });
+		if (ts.isIdentifier(node) && RUNTIME_NAMES.includes(node.text)) {
+			const member = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node;
+			if (!member) found.push({ line: lineOf(node), finding: `names ${node.text}` });
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
 	return found;
 }
 
@@ -96,7 +74,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 	for (const file of files) {
 		let uses;
 		try {
-			uses = findRuntimeUses(fs.readFileSync(file, "utf8"));
+			uses = findRuntimeUses(fs.readFileSync(file, "utf8"), path.basename(file));
 		} catch (e) {
 			uses = [{ line: 1, finding: e.message }];
 		}

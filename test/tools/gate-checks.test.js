@@ -72,6 +72,9 @@ test("I11: the runtime check passes over dist, and fails on a bare or node: impo
 		"export const s = self;\n",
 		"export const t = `${global.x}`;\n",
 		"const r = /'/; const p = process.env;\n",
+		"if (Math.PI) /'/.test(''); globalThis.x = 1; //'\n",
+		"{} /'/.test(''); process.exit(); //'\n",
+		"export const o = { self: 1 };\n",
 	];
 	for (const text of bad) {
 		const dir = scratch({ "a.js": text });
@@ -90,5 +93,9 @@ test("I11: the runtime check reads names in code only, never in comments or stri
 	assert.deepEqual(findRuntimeUses("const r = /'/; const p = process.env;\n").map((f) => f.finding), ["names process"], "a quote inside a regular expression begins no string");
 	assert.deepEqual(findRuntimeUses("const s = 'process';\n"), [], "a name inside a string is not a finding");
 	assert.deepEqual(findRuntimeUses("const g = global; const r = require;\n").map((f) => f.finding), ["names global", "names require"], "contextual keywords are names too");
-	assert.throws(() => findRuntimeUses('const s = "open;\n'), /scanner could not read/);
+	assert.deepEqual(findRuntimeUses("if (Math.PI) /'/.test(''); globalThis.x = 1; //'\n").map((f) => f.finding), ["names globalThis"], "a regular expression after ) is no division");
+	assert.deepEqual(findRuntimeUses("{} /'/.test(''); process.exit(); //'\n").map((f) => f.finding), ["names process"], "a regular expression after a block's } is no division");
+	assert.deepEqual(findRuntimeUses("const o = { self: 1 };\n").map((f) => f.finding), ["names self"], "an object-literal key is counted");
+	assert.deepEqual(findRuntimeUses("const m = import.meta.url; const n = a?.process;\n"), [], "import.meta is no dynamic import, and an optional member is a member");
+	assert.throws(() => findRuntimeUses('const s = "open;\n'), /could not parse/);
 });
