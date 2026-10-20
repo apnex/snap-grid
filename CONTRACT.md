@@ -74,11 +74,14 @@ None requires another component's capability, and none brings a trait: snap-grid
 **Errors.**\
 Every function validates its arguments before it computes.\
 A point may be any object, of any prototype, with number properties `x` and `y`, because consumers pass what they hold -- draw passes `DOMPoint`s and its own entities; a position, a region, a view and an options argument are plain objects (SG1) holding the properties their forms name and no other, an options argument any of its properties or none.\
+A point is a non-null value of type `object`, so a function is not one; its `x` and `y` are read once each through ordinary property access, so a `DOMPoint`'s getters answer, while every other argument is read through its own data properties, so no getter of it is called.\
+An error a getter or a Proxy trap throws while an argument is read is rethrown as the function's own `TypeError`, its message beginning with the function's name.\
 A malformed argument -- a point that is not an object with number `x` and `y`, a position not of the shape's form, a region or view not of the vocabulary's form, an option out of range, a direction the grid does not list -- throws a `TypeError` whose message begins with the function's name.\
 A well-formed position that is not representable, given to `pointOf` or `span`, throws a `RangeError`.\
-A rect is malformed when `x`, `y`, `w` or `h` is not a number, or `w` or `h` is less than 0; its edges are `x`, `y`, `x + w` and `y + h` as binary64 computes them.\
+A rect is malformed unless `x`, `y`, `w` and `h` are numbers and `w` and `h` are each at least 0, so a `w` or `h` that is `NaN` is malformed and an infinite one is not; its edges are `x`, `y`, `x + w` and `y + h` as binary64 computes them.\
 A point with a coordinate that is a number but not finite, or outside the shape's domain, is well formed, and `nearest` and `positionAt` answer `null` for it; so is a rect with such an edge, and `enclosing` answers `null` for it.\
-`openGrid` never throws for any declaration; it throws a `TypeError` only for malformed `options`.
+`openGrid` never throws for any declaration; it throws a `TypeError` only for malformed `options`.\
+That guarantee, and that what it returns is fresh and frozen, hold for `square` and for an added shape that keeps SG11, which the kit checks (SG11, `open`); `openGrid` hands a declaration to the shape it names and returns its answer as it is, never wrapping an added shape.
 
 **What is returned.**\
 Every value snap-grid returns -- a grid, an open result, a problem list, a position, a point, a region, an `inView` answer, a span, a block, a failure list -- is made afresh by the call and frozen to its depth; nothing a caller passes is frozen, kept or changed.
@@ -181,7 +184,7 @@ Tested by: `test/contract/grid-position-span.test.js`.
 `grid.enclosing(rect)` returns a block `{ from, to }` of offered positions, or `null`.\
 Where some block's `through` contains the rect, it is the smallest such block; where none does, the shape's rule says what it answers; and it is `null` for a rect with an edge that is not finite or lies outside the domain (Errors, above).\
 On a square grid, on each axis: `from` is `floor((min - origin) / pitch)` and `to` is `ceil((max - origin) / pitch)`, computed exactly (SG2), each clamped to the least and greatest offered index, then `+ 0`, where `min` and `max` are the rect's edges; so a rect reaching past the offered positions gives the block clamped to them, and a rect wholly beyond one side gives a block of the one edge position there.\
-This is draw's zone wrap (`zones/zone-keys.mjs:28-33`) as a question any shape can answer.\
+This is draw's zone wrap (`zones/zone-keys.mjs:28-33`) as a question any shape can answer, for every rect the wrap is given -- a selection's bounds, within the extent; for a rect wholly beyond one side the wrap, which clamps its low edge only from below and its high edge only from above, inverts its block, where SG9 gives the edge position there.\
 Tested by: `test/contract/enclosing-grid-block.test.js`.
 
 **SG10 -- Exports.**\
@@ -200,7 +203,17 @@ The kit judges the cases in the array's order, and within a case the invariants 
 It records one failure for each argument tuple that fails any of its invariant's checks, a call that throws failing its tuple and ending that tuple's checks.\
 So, for a shape whose every answer depends only on its declaration and its arguments, two conforming kits list the same failures in the same order, with the same `invariant`, `case` and `args`; `got` is a diagnostic -- the answer that failed, or `{ thrown: <message> }` -- and its form is not part of the contract.\
 A shape whose answers depend on how often or in what order it is asked is broken whatever a kit lists; a kit samples, and cannot always see it -- I7 catches what a repeated call shows -- so two kits, making their other calls in different orders, may list different failures for it, or one none.\
-A declaration the shape refuses is the case's one failure, `{ invariant: 'open', case, args: [declaration], got: problems }`.
+A declaration the shape refuses is the case's one failure, `{ invariant: 'open', case, args: [declaration], got: problems }`.\
+So is an answer from `open` that is not of SG1's form, `{ ok: true, grid }` or `{ ok: false, problems }`, or not frozen -- the answer and its grid frozen, the grid's `declaration` frozen to its depth -- or not fresh, two calls giving the same answer or the same grid.
+
+The kit's rules where the table leaves a choice:
+- a case position is selected for I1 and I5 when `offers` answers exactly `true`; one whose `offers` throws is not selected there, and I7's schedule, which calls `offers` for every case position, records the throw;
+- I4's `args` are always `[view, options]`, and the kit calls `inView(view, options)` in I4 and in I7 alike, `options` being `undefined` when the case's pair has none;
+- answers are compared by value, `-0` equal to `0`, except within I7, whose two answers are compared with `Object.is`, the same keys in the same order and the same prototype;
+- a rect's membership is computed by the kit, its edges as binary64 computes them, and a region of any other kind is asked of the grid's `regionContains`;
+- `null` from `enclosing` fails I8, since every case rect lies in the `through` of some block of offered positions;
+- a failure's `args` are copies, made one way so two kits agree: a point as `{ x, y }` alone, whatever its prototype or other fields, and every other argument as a deep copy of its plain data -- own enumerable data properties of an object, the elements of an array -- then frozen;
+- a throwing accessor or Proxy in a shape's answer, its grid or its `directions` is recorded as the failure of the tuple it belongs to -- `open`, I5's first tuple, or the tuple whose call met it -- and the kit itself never throws for it, throwing a `TypeError` only for a malformed shape or case.
 
 | Invariant | Judged over, in order | `args` |
 |---|---|---|
@@ -235,7 +248,7 @@ Each invariant holds for every grid of every shape.\
 | I7 | The same declaration and arguments always give the same answer, field for field and in the same order; no answer holds `-0`; every answer is frozen to its depth. | kit |
 | I8 | `enclosing(rect)` is `null` or a block of offered positions; for a case rect, the block's `through` holds the rect's four corners and every case point in the rect (kit). No corner can move inward and keep that true, and the shape's rule decides a rect no block contains (shape). | kit, shape |
 | I9 | `openGrid` never throws for any JSON value, and answers every declaration with exactly the problems SG1 gives, from a table of cases, escaped pointers and code-unit order among them. | snap-grid |
-| I10 | `square` reproduces draw's arithmetic: a corpus of points, positions and answers, generated once from draw's `kernel/geometry.mjs`, `app/src/snap.js`, `layouts/layout-canvas.mjs` and `zones/zone-keys.mjs` at `0c59572` over coordinates in the domain, and stated as square-grid cases with no word of draw's, passes with `-0` told apart from `0` -- except at the points where draw's arithmetic is not exact, which the corpus lists apart, each with draw's answer and the exact one (the design's D1 and section 6.3). | snap-grid |
+| I10 | `square` reproduces draw's arithmetic: a corpus of points, positions and answers, generated once from draw's `kernel/geometry.mjs`, `app/src/snap.js`, `layouts/layout-canvas.mjs` and `zones/zone-keys.mjs` at `0c59572` over coordinates in the domain, and stated as square-grid cases with no word of draw's, passes with `-0` told apart from `0` -- except at the points the corpus lists apart, each with draw's answer, the exact one, and every reason that applies: `rounding`, where draw's float arithmetic is not exact; `domain`, where draw's answer lies outside the 2^50 domain, so snap-grid clamps; and `beyond`, a rect wholly beyond one side of the bounded grid, which draw's wrap is never given and where it inverts (SG9); a point with two causes carries both (the design's D1 and section 6.3). | snap-grid |
 | I11 | The source names no consumer's vocabulary, and the built files import no package and no runtime-specific module or global (the design's section 7.2). | gate |
 
 The kit measures nearness in binary64 because it has no exact measure for an arbitrary shape.\

@@ -2,7 +2,7 @@
 
 Answer, for a grid declared as data, where its positions lie in a plane and which position lies nearest a point.
 
-**Status: experimental, versions `0.x` until mission-kit admits it; runs in Node 22 and later and in every browser that loads ES modules.**
+**Status: experimental until mission-kit admits it; runs in Node 22 and later, and in browsers that support ES2022 and import maps.**
 
 ---
 
@@ -10,10 +10,10 @@ Answer, for a grid declared as data, where its positions lie in a plane and whic
 
 snap-grid is released only as a tarball attached to a GitHub release, made by its own CI, so a consumer names the release file and its lockfile pins the file's hash.
 
-Name the release file in your `package.json`, the version you take in its address:
+Choose a release from the repository's Releases page, `https://github.com/apnex/snap-grid/releases`, and name its file in your `package.json`, writing that release's version for `<version>`:
 ```json
 "dependencies": {
-  "@apnex/snap-grid": "https://github.com/apnex/snap-grid/releases/download/v0.1.0/apnex-snap-grid-0.1.0.tgz"
+  "@apnex/snap-grid": "https://github.com/apnex/snap-grid/releases/download/v<version>/apnex-snap-grid-<version>.tgz"
 }
 ```
 
@@ -22,7 +22,8 @@ Then install, which records the file's `integrity` in `package-lock.json`, so ev
 npm install
 ```
 
-A browser page maps each export to its file with one import-map entry per export, never a trailing-slash prefix, which would map `@apnex/snap-grid/conformance` to an address with no `.js`.
+A browser loads it as ES2022 modules through an import map, so it needs a browser that supports both.\
+The page maps each export to its file with one import-map entry per export, never a trailing-slash prefix, which would map `@apnex/snap-grid/conformance` to an address with no `.js`.
 
 ---
 

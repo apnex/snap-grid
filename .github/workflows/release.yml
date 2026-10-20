@@ -22,13 +22,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # gh api takes no --repo: every call below names repos/$GITHUB_REPOSITORY in its path, and GH_REPO
+    # names it too, so no call relies on the checkout's remote
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
-      REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -46,19 +48,19 @@ jobs:
       # release of the tag is found by listing them all.
       - name: refuse a tag that already has a published release, and delete a draft of it
         run: |
-          gh api --paginate "repos/$REPO/releases" --jq '.[] | [.id, .draft, .tag_name] | @tsv' > "$RUNNER_TEMP/releases.tsv"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | [.id, .draft, .tag_name] | @tsv' > "$RUNNER_TEMP/releases.tsv"
           if awk -F'\t' -v tag="$TAG" '$3 == tag && $2 == "false" { found = 1 } END { exit !found }' "$RUNNER_TEMP/releases.tsv"; then
             echo "$TAG already has a published release, which is never replaced; a fix is a new version"
             exit 1
           fi
           awk -F'\t' -v tag="$TAG" '$3 == tag && $2 == "true" { print $1 }' "$RUNNER_TEMP/releases.tsv" | while read -r id; do
             echo "deleting draft release $id of $TAG, left by an earlier run"
-            gh api -X DELETE "repos/$REPO/releases/$id"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
           done
 
       - run: npm ci
       - name: fetch the style rules (mission-kit at HEAD)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: apnex/mission-kit
           path: .mission-kit
@@ -81,10 +83,10 @@ jobs:
 
       - name: create a draft release holding the file and its SHA-512
         run: |
-          gh release create "$TAG" --draft --verify-tag --title "$TAG" \
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
             --notes "@apnex/snap-grid ${TAG#v}. Name this release's tarball in package.json (README.md, Install); its SHA-512 is attached beside it." \
             "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/packed/$FILE.sha512"
-          ids=$(gh api --paginate "repos/$REPO/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
           if [ -z "$ids" ] || [ "$(printf '%s\n' "$ids" | wc -l)" != 1 ]; then
             echo "expected one draft release of $TAG, found: $ids"
             exit 1
@@ -96,14 +98,14 @@ jobs:
       - name: download both back through the authenticated API, and compare them byte for byte
         run: |
           mkdir -p "$RUNNER_TEMP/downloaded"
-          gh api --paginate "repos/$REPO/releases/$DRAFT_ID/assets" --jq '.[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/assets.tsv"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$DRAFT_ID/assets" --jq '.[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/assets.tsv"
           if [ "$(wc -l < "$RUNNER_TEMP/assets.tsv")" != 2 ]; then
             echo "the draft holds these assets, not the file and its SHA-512:"
             cat "$RUNNER_TEMP/assets.tsv"
             exit 1
           fi
           while IFS=$'\t' read -r asset name; do
-            gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$asset" > "$RUNNER_TEMP/downloaded/$name"
+            gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset" > "$RUNNER_TEMP/downloaded/$name"
           done < "$RUNNER_TEMP/assets.tsv"
           cmp "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/downloaded/$FILE"
           cmp "$RUNNER_TEMP/packed/$FILE.sha512" "$RUNNER_TEMP/downloaded/$FILE.sha512"
@@ -111,4 +113,4 @@ jobs:
           sha512sum -c "$FILE.sha512"
 
       - name: publish the draft, only now
-        run: gh api -X PATCH "repos/$REPO/releases/$DRAFT_ID" -F draft=false --jq '.html_url'
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$DRAFT_ID" -F draft=false --jq '.html_url'
