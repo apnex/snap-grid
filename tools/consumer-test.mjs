@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // consumer-test - the consumer test (the design's section 7.3): the package as a consumer receives it.
 //
-// It packs the package, installs the file into an empty project with --omit=dev, imports every export by
-// name in Node, then serves the installed files with a small static server and loads every export in
-// headless Chrome through an import map made as draw makes its own: one entry per export, never a
-// trailing-slash prefix, each export's address carrying the package's version. The page calls openGrid
-// once and writes what it saw into the page, which Chrome's --dump-dom returns.
+// It packs the package -- or takes a tarball already packed, such as the one a release attaches --
+// installs the file into an empty project with --omit=dev, imports every export by name in Node, then
+// serves the installed files with a small static server and loads every export in headless Chrome
+// through an import map made as draw makes its own: one entry per export, never a trailing-slash prefix,
+// each export's address carrying the package's version. The page calls openGrid once and writes what it
+// saw into the page, which Chrome's --dump-dom returns.
 //
 // Chrome is $CHROME, or google-chrome on PATH. It runs with a profile of its own in a scratch directory,
 // so it never touches another Chrome on the machine. Nothing here needs an npm dependency.
 //
-// Usage:  node tools/consumer-test.mjs [--keep]
+// Usage:  node tools/consumer-test.mjs [--tarball FILE] [--keep]    (or SNAP_GRID_TARBALL=FILE)
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -22,6 +23,8 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const keep = process.argv.includes("--keep");
+const tarballAt = process.argv.indexOf("--tarball");
+const given = tarballAt > -1 ? process.argv[tarballAt + 1] : process.env.SNAP_GRID_TARBALL || null;
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-consumer-"));
 const fail = (message) => {
 	console.log(`consumer-test: FAIL -- ${message}`);
@@ -31,12 +34,22 @@ const fail = (message) => {
 const step = (message) => console.log(`  ${message}`);
 
 async function main() {
-	// 1. build, then pack, as a release does
-	execFileSync("npm", ["run", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
-	const packed = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }));
-	const tarball = path.join(scratch, packed[0].filename);
-	const shipped = packed[0].files.map((f) => f.path).sort();
-	step(`packed ${packed[0].filename}: ${shipped.length} files`);
+	// 1. the tarball given, or build and pack one, as a release does
+	let tarball, shipped;
+	if (given) {
+		tarball = path.resolve(given);
+		if (!fs.existsSync(tarball) || !fs.statSync(tarball).isFile()) fail(`no tarball at ${tarball}`);
+		const entries = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" }).split("\n").filter((e) => e && !e.endsWith("/"));
+		if (entries.some((e) => !e.startsWith("package/"))) fail(`${tarball} is not an npm package tarball`);
+		shipped = entries.map((e) => e.slice("package/".length)).sort();
+		step(`took the tarball given, ${path.basename(tarball)}: ${shipped.length} files`);
+	} else {
+		execFileSync("npm", ["run", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+		const packed = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }));
+		tarball = path.join(scratch, packed[0].filename);
+		shipped = packed[0].files.map((f) => f.path).sort();
+		step(`packed ${packed[0].filename}: ${shipped.length} files`);
+	}
 	const stray = shipped.filter((f) => !f.startsWith("dist/") && !["CONTRACT.md", "LICENSE", "README.md", "VISION.md", "package.json"].includes(f));
 	if (stray.length) fail(`the tarball holds files outside dist and the documents: ${stray.join(", ")}`);
 	if (shipped.some((f) => f.endsWith(".d.ts.map"))) fail("the tarball holds a declaration map");
