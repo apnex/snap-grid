@@ -1,7 +1,8 @@
 // gate-checks - the gate's own checks (I11) can fail: the vocabulary check, the runtime check -- vector-scene's,
-// its allow-list holding exactly the built-ins snap-grid's build names and no platform-member pass -- and the
-// clock and chance check, vector-scene's as written, each pass over this repository and fail over a copy
-// holding what it exists to refuse.
+// its allow-list holding exactly the built-ins snap-grid's build names and no platform-member pass -- the clock
+// and chance check, vector-scene's as written, and the comparison of a release's built files with the release
+// it repeats (docs/DECISIONS.md, D3) each pass over this repository and fail over a copy holding what it
+// exists to refuse.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -10,9 +11,12 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { execFileSync } from "node:child_process";
+
 import { candidateWords, findVocabulary, readVocabulary, splitWords } from "../../tools/check-vocabulary.mjs";
 import { findClockAndChance } from "../../tools/check-clock-and-chance.mjs";
 import { ALLOWED_GLOBALS, findRuntimeUses, freeGlobalReferences, parseModule } from "../../tools/check-runtime.mjs";
+import { compareBuilt, repeatedBuild } from "../../tools/compare-built.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const run = (tool, ...args) => spawnSync(process.execPath, [path.join(root, "tools", tool), ...args], { encoding: "utf8" });
@@ -219,6 +223,54 @@ test("I11: the clock and chance check reads code only, and passes a direct membe
 	for (const text of clean) assert.deepEqual(findClockAndChance(text), [], text);
 	assert.deepEqual(findClockAndChance('export const c = Math["random"]();\n').map((f) => f.finding), ["reads Math.random by brackets", "uses Math as a value, not as a direct member access by identifier"]);
 	assert.throws(() => findClockAndChance('const s = "open;\n'), /could not parse/);
+});
+
+/** A package tarball of `files` under package/, made by tar as npm makes one. */
+function tarball(dir, name, files) {
+	const top = path.join(dir, `${name}-tree`);
+	for (const [file, text] of Object.entries(files)) {
+		fs.mkdirSync(path.dirname(path.join(top, "package", file)), { recursive: true });
+		fs.writeFileSync(path.join(top, "package", file), text);
+	}
+	const out = path.join(dir, `${name}.tgz`);
+	execFileSync("tar", ["-czf", out, "-C", top, "package"]);
+	return out;
+}
+
+test("D3: the built files of two tarballs compare byte for byte -- the same files pass whatever the documents and package.json say; a byte changed, a file added and a file missing each fail", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-built-"));
+	try {
+		const built = { "dist/index.js": "export * from \"./a.js\";\n", "dist/a.js": "export const a = 1;\n", "dist/a.js.map": "{}" };
+		const base = tarball(dir, "base", { ...built, "package.json": "{\"version\":\"0.1.0\"}", "README.md": "old" });
+		const same = tarball(dir, "same", { ...built, "package.json": "{\"version\":\"0.1.1\"}", "README.md": "new", "CONTRACT.md": "new" });
+		assert.deepEqual(compareBuilt(same, base), { problems: [], compared: 3 }, "documents and the version differ; the built files do not");
+		const byte = tarball(dir, "byte", { ...built, "dist/a.js": "export const a = 2;\n" });
+		assert.deepEqual(compareBuilt(byte, base).problems, ["dist/a.js differs"]);
+		const added = tarball(dir, "added", { ...built, "dist/b.js": "" });
+		assert.deepEqual(compareBuilt(added, base).problems, ["dist/b.js is in added.tgz alone"]);
+		const { "dist/a.js.map": _, ...fewer } = built;
+		const missing = tarball(dir, "missing", fewer);
+		assert.deepEqual(compareBuilt(missing, base).problems, ["dist/a.js.map is in base.tgz alone"]);
+		const none = tarball(dir, "none", { "package.json": "{}" });
+		assert.ok(compareBuilt(none, tarball(dir, "none2", { "package.json": "{}" })).problems.includes("none.tgz holds no built file"));
+		assert.equal(spawnSync(process.execPath, [path.join(root, "tools", "compare-built.mjs"), same, base], { encoding: "utf8" }).status, 0);
+		const r = spawnSync(process.execPath, [path.join(root, "tools", "compare-built.mjs"), byte, base], { encoding: "utf8" });
+		assert.equal(r.status, 1);
+		assert.match(r.stdout, /dist\/a\.js differs/);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("D3, RD12: this release repeats 0.1.0's built files, as tools/repeated-build.json records, and the release workflow refuses a packed file whose built files differ before it drafts", () => {
+	const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+	assert.equal(repeatedBuild(pkg.version), "0.1.0");
+	assert.equal(repeatedBuild("0.2.0"), null, "a release not named repeats nothing");
+	const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
+	const compare = workflow.indexOf("node tools/compare-built.mjs");
+	assert.ok(compare > workflow.indexOf("npm pack"), "after the pack");
+	assert.ok(compare < workflow.indexOf("gh release create"), "before the draft");
+	assert.match(workflow, /sha512sum -c "apnex-snap-grid-\$base\.tgz\.sha512"/, "the release it repeats checked against its own SHA-512");
 });
 
 test("I11: the gate runs every check, the clock and chance check among them, after the tests and before the style checks", () => {

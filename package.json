@@ -1,6 +1,6 @@
 {
   "name": "@apnex/snap-grid",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Answer, for a grid declared as data, where its positions lie in a plane and which position lies nearest a point.",
   "license": "MIT",
   "author": "apnex",

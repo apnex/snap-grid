@@ -1,9 +1,11 @@
-# A release (the design's section 7.4, decision D9): a run on a pushed tag v<semver>, one at a time per
-# repository, with contents: write and nothing else. It refuses a tag that is not package.json's version,
-# a version outside 0.x, or a tag that already has a published release; runs the gate; packs the package
-# once and writes the file's SHA-512; runs the consumer test on that very file; creates a draft release
-# holding the file and its SHA-512; downloads both back through the authenticated API and compares them
-# byte for byte with what it packed; and only then publishes.
+# A release (the design's section 7.4, decision D9, with vector-scene's retried lookup of the draft; D3): a
+# run on a pushed tag v<semver>, one at a time per repository, with contents: write and nothing else. It
+# refuses a tag that is not package.json's version, a version outside 0.x, or a tag that already has a
+# published release; runs the gate; packs the package once and writes the file's SHA-512; for a release
+# that changes no built file, named in tools/repeated-build.json, refuses a packed file whose built files
+# are not byte-identical to the release it repeats; runs the consumer test on that very file; creates a
+# draft release holding the file and its SHA-512; downloads both back through the authenticated API and
+# compares them byte for byte with what it packed; and only then publishes.
 #
 # A failed run leaves at most a draft, which the next run of the same tag deletes and remakes; a published
 # release is never replaced, and a fix is a new version. Only this workflow makes a release.
@@ -25,6 +27,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # a backstop: a hang fails the run rather than holding a runner for hours
+    timeout-minutes: 15
     # gh api takes no --repo: every call below names repos/$GITHUB_REPOSITORY in its path, and GH_REPO
     # names it too, so no call relies on the checkout's remote
     env:
@@ -87,6 +91,22 @@ jobs:
           sha512sum "$FILE" > "$FILE.sha512"
           cat "$FILE.sha512"
 
+      # D3: a release that changes no built file names the release it repeats, and its built files must be
+      # that release's, byte for byte -- the release's own file downloaded through the authenticated API
+      # and checked against the SHA-512 attached beside it
+      - name: refuse built files that differ from the release this one repeats, when it names one
+        run: |
+          base=$(node -p "JSON.parse(require('fs').readFileSync('tools/repeated-build.json', 'utf8')).releases[require('./package.json').version] ?? ''")
+          if [ -z "$base" ]; then
+            echo "this release names no release whose built files it repeats"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/repeated"
+          gh release download "v$base" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/repeated" \
+            --pattern "apnex-snap-grid-$base.tgz" --pattern "apnex-snap-grid-$base.tgz.sha512"
+          (cd "$RUNNER_TEMP/repeated" && sha512sum -c "apnex-snap-grid-$base.tgz.sha512")
+          node tools/compare-built.mjs "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/repeated/apnex-snap-grid-$base.tgz"
+
       - name: the consumer test, on the packed file
         run: npm run consumer -- --tarball "$RUNNER_TEMP/packed/$FILE"
 
@@ -95,7 +115,13 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
             --notes "@apnex/snap-grid ${TAG#v}. Name this release's tarball in package.json (README.md, Install); its SHA-512 is attached beside it." \
             "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/packed/$FILE.sha512"
-          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          # the list of releases can lag the create by a few seconds, so the lookup is retried, bounded
+          ids=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+            [ -n "$ids" ] && break
+            sleep 5
+          done
           if [ -z "$ids" ] || [ "$(printf '%s\n' "$ids" | wc -l)" != 1 ]; then
             echo "expected one draft release of $TAG, found: $ids"
             exit 1

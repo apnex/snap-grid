@@ -1,0 +1,6 @@
+{
+  "about": "Each release that changes no built file, mapped to the release whose built files it repeats byte for byte (docs/DECISIONS.md, D3). The release run compares the tarball it packed with that release's (tools/compare-built.mjs); a release named here whose built files differ is never drafted.",
+  "releases": {
+    "0.1.1": "0.1.0"
+  }
+}
