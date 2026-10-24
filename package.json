@@ -33,7 +33,7 @@
     "build": "node tools/clean-dist.mjs && tsc -p .",
     "prepack": "npm run build",
     "test": "npm run build && node --test \"test/**/*.test.js\"",
-    "gate": "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
+    "gate": "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
     "consumer": "node tools/consumer-test.mjs"
   },
   "devDependencies": {

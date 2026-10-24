@@ -1,5 +1,7 @@
-// gate-checks - the vocabulary check and the runtime check (the design's section 7.2; I11) can fail: each
-// passes over this repository and fails over a copy holding what it exists to refuse.
+// gate-checks - the gate's own checks (I11) can fail: the vocabulary check, the runtime check -- vector-scene's,
+// its allow-list holding exactly the built-ins snap-grid's build names and no platform-member pass -- and the
+// clock and chance check, vector-scene's as written, each pass over this repository and fail over a copy
+// holding what it exists to refuse.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -9,7 +11,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { candidateWords, findVocabulary, readVocabulary, splitWords } from "../../tools/check-vocabulary.mjs";
-import { findRuntimeUses } from "../../tools/check-runtime.mjs";
+import { findClockAndChance } from "../../tools/check-clock-and-chance.mjs";
+import { ALLOWED_GLOBALS, findRuntimeUses, freeGlobalReferences, parseModule } from "../../tools/check-runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const run = (tool, ...args) => spawnSync(process.execPath, [path.join(root, "tools", tool), ...args], { encoding: "utf8" });
@@ -55,7 +58,7 @@ test("I11: the vocabulary check passes over src, and fails on a word of draw's i
 	}
 });
 
-test("I11: the runtime check passes over dist, and fails on a bare or node: import, a dynamic import, or a runtime's global", () => {
+test("I11: the runtime check passes over dist, and fails on a bare or node: import, a dynamic import, a runtime's global, eval, Function or a call through constructor", () => {
 	assert.equal(run("check-runtime.mjs").status, 0);
 	const bad = [
 		'import fs from "node:fs";\n',
@@ -75,19 +78,26 @@ test("I11: the runtime check passes over dist, and fails on a bare or node: impo
 		"if (Math.PI) /'/.test(''); globalThis.x = 1; //'\n",
 		"{} /'/.test(''); process.exit(); //'\n",
 		"export const o = { self: 1 };\n",
+		'export const e = eval("this");\n',
+		"const F = Function; export const g = F(\"return this\")();\n",
+		'export const n = new Function("return this")();\n',
+		'export const c = (() => 0).constructor("return this")();\n',
+		'export const b = (() => 0)["constructor"]("return this")();\n',
+		'export const k = new (function () {}).constructor("return this")();\n',
 	];
-	for (const text of bad) {
-		const dir = scratch({ "a.js": text });
-		try {
-			assert.equal(run("check-runtime.mjs", dir).status, 1, text);
-		} finally {
-			fs.rmSync(dir, { recursive: true, force: true });
-		}
+	// every plant a file of its own in one copy, run through the tool once: each must be reported
+	const dir = scratch(Object.fromEntries(bad.map((text, i) => [`plant-${String(i).padStart(2, "0")}.js`, text])));
+	try {
+		const r = run("check-runtime.mjs", dir);
+		assert.equal(r.status, 1);
+		bad.forEach((text, i) => assert.match(r.stdout, new RegExp(`plant-${String(i).padStart(2, "0")}\\.js:`), text));
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
 
 test("I11: the runtime check reads names in code only, never in comments or strings, nor as members", () => {
-	const clean = '// globalThis, process and require( in a comment\nimport { a } from "./a.js";\nexport * from "../b.js";\nconst s = "window document self";\nconst q = \'process\';\nconst t = `import("x") ${a.process}`;\nconst o = { x: options.self };\nconst d = a / b / c;\nconst r = [/"/g, /\\//];\n/* Buffer */\n';
+	const clean = '// globalThis, process and require( in a comment\nimport { a } from "./a.js";\nconst options = {}, b = 1, c = 2;\nexport * from "../b.js";\nconst s = "window document self";\nconst q = \'process\';\nconst t = `import("x") ${a.process}`;\nconst o = { x: options.self };\nconst d = a / b / c;\nconst r = [/"/g, /\\//];\n/* Buffer */\n';
 	assert.deepEqual(findRuntimeUses(clean), []);
 	assert.deepEqual(findRuntimeUses("const t = `a ${globalThis.x} b`;\n").map((f) => f.finding), ["names globalThis"]);
 	assert.deepEqual(findRuntimeUses("const r = /'/; const p = process.env;\n").map((f) => f.finding), ["names process"], "a quote inside a regular expression begins no string");
@@ -96,6 +106,122 @@ test("I11: the runtime check reads names in code only, never in comments or stri
 	assert.deepEqual(findRuntimeUses("if (Math.PI) /'/.test(''); globalThis.x = 1; //'\n").map((f) => f.finding), ["names globalThis"], "a regular expression after ) is no division");
 	assert.deepEqual(findRuntimeUses("{} /'/.test(''); process.exit(); //'\n").map((f) => f.finding), ["names process"], "a regular expression after a block's } is no division");
 	assert.deepEqual(findRuntimeUses("const o = { self: 1 };\n").map((f) => f.finding), ["names self"], "an object-literal key is counted");
-	assert.deepEqual(findRuntimeUses("const m = import.meta.url; const n = a?.process;\n"), [], "import.meta is no dynamic import, and an optional member is a member");
+	assert.deepEqual(findRuntimeUses("const a = {}; const m = import.meta.url; const n = a?.process;\n"), [], "import.meta is no dynamic import, and an optional member is a member");
+	assert.deepEqual(findRuntimeUses('const x = {}, y = {}, o = {}; const a = x.eval; const b = y.Function; const s = "eval(Function)"; const c = o.constructor; const d = o.constructor === Object; // eval\n'), [], "eval and Function as members, in strings and comments, and a constructor read but not called, pass");
+	assert.deepEqual(findRuntimeUses('const g = eval("this");\n').map((f) => f.finding), ["names eval"]);
+	assert.deepEqual(findRuntimeUses('const g = new Function("return this")();\n').map((f) => f.finding), ["names Function"]);
+	assert.deepEqual(findRuntimeUses('const f = () => 0; const g = f.constructor("return this")();\n').map((f) => f.finding), ["calls through a property named constructor, which reaches Function"]);
 	assert.throws(() => findRuntimeUses('const s = "open;\n'), /could not parse/);
+});
+
+test("I11, B424: the runtime check allows exactly the built-ins snap-grid's build names -- RangeError among them, WeakMap not -- so any other global fails however it is named", () => {
+	const named = new Set();
+	for (const file of fs.readdirSync(path.join(root, "dist")).filter((f) => f.endsWith(".js"))) {
+		for (const { name } of freeGlobalReferences(parseModule(fs.readFileSync(path.join(root, "dist", file), "utf8"), file))) named.add(name);
+	}
+	assert.deepEqual([...named].sort(), [...ALLOWED_GLOBALS].sort(), "the allow-list is exactly the globals the built files name");
+	assert.deepEqual([...ALLOWED_GLOBALS].sort(), ["Array", "Error", "JSON", "Map", "Math", "Number", "Object", "RangeError", "Reflect", "Set", "String", "TypeError", "undefined"]);
+	const finding = (name) => `names the global ${name}, which is none of the built-ins the build uses`;
+	// the control: a built file naming RangeError, which snap-grid throws for a position it cannot represent, passes
+	assert.deepEqual(findRuntimeUses('export const f = () => { throw new RangeError("pointOf: beyond the domain"); };\n'), []);
+	// the falsifiers: WeakMap, which vector-scene's build names and snap-grid's does not, and every platform global
+	const globals = ["WeakMap", "MessageChannel", "EventSource", "Worker", "SharedWorker", "BroadcastChannel", "RTCPeerConnection", "Atomics", "SharedArrayBuffer", "WebSocket", "XMLHttpRequest", "fetch", "navigator", "location", "localStorage", "indexedDB", "postMessage", "structuredClone", "queueMicrotask", "Promise", "Proxy", "Symbol", "Date", "Intl", "WeakRef", "BigInt", "DataView", "ArrayBuffer", "DOMPoint", "arguments"];
+	for (const name of globals) {
+		assert.deepEqual(findRuntimeUses(`export const planted = () => ${name};\n`).map((f) => f.finding), [finding(name)], name);
+	}
+	assert.deepEqual(findRuntimeUses("export const a = new MessageChannel();\n").map((f) => f.finding), [finding("MessageChannel")], "constructed");
+	assert.deepEqual(findRuntimeUses("export const a = typeof Worker;\n").map((f) => f.finding), [finding("Worker")], "under typeof");
+	assert.deepEqual(findRuntimeUses("export const a = { Atomics };\n").map((f) => f.finding), [finding("Atomics")], "a shorthand property is a reference");
+	assert.deepEqual(findRuntimeUses("export function f() { return Worker; }\nfunction g() { const Worker = 1; return Worker; }\nexport { g };\n").map((f) => [f.line, f.finding]), [[1, finding("Worker")]], "a name declared in another scope does not cover this one");
+	const clean = [
+		`export const a = () => [${ALLOWED_GLOBALS.join(", ")}];\n`,
+		"const Worker = 1; export const a = Worker;\n",
+		"export const a = (MessageChannel) => MessageChannel;\n",
+		"export function f({ EventSource }) { return EventSource; }\n",
+		"export const a = (x) => x.Worker + x?.Atomics + ({ BroadcastChannel: 1 }).BroadcastChannel;\n",
+		"// MessageChannel, Worker and Atomics in a comment\nexport const s = \"new Worker(MessageChannel)\";\n",
+		"label: for (;;) { break label; }\nexport {};\n",
+		"try { void 0; } catch (error) { void error; }\nexport {};\n",
+		"import { Worker } from \"./worker.js\";\nexport const w = Worker;\n",
+	];
+	for (const text of clean) assert.deepEqual(findRuntimeUses(text), [], text);
+	const dir = scratch(Object.fromEntries(globals.slice(0, 7).map((name, i) => [`global-${i}.js`, `export const planted = () => ${name};\n`])));
+	try {
+		const r = run("check-runtime.mjs", dir);
+		assert.equal(r.status, 1);
+		globals.slice(0, 7).forEach((name, i) => assert.match(r.stdout, new RegExp(`global-${i}\\.js:1  names the global ${name},`)));
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("I11, B424: the runtime check has no platform-member pass -- the build's own names open, points, r and scale, which are platform members' names, pass by dot, by brackets and by destructuring", () => {
+	const ownNames = [
+		"export const a = (shape, declaration) => shape.open(declaration);\n",
+		"export const b = (grid) => grid.points + grid[\"scale\"];\n",
+		"export const c = ({ r, scale }) => r * scale;\n",
+		"export const d = (view) => \"scale\" in view && Reflect.get(view, \"scale\");\n",
+	];
+	for (const text of ownNames) assert.deepEqual(findRuntimeUses(text), [], text);
+	for (const [file, form] of [["conformance.js", /\.points\b/], ["open-grid.js", /open: square\.open/], ["exact-index.js", /\{ q, r, f \}/], ["square.js", /\.scale\b/]]) {
+		assert.match(fs.readFileSync(path.join(root, "dist", file), "utf8"), form, `${file} names one of them, and the check passes over it`);
+	}
+});
+
+test("I11: the clock and chance check passes over dist, and fails on a clock, a timer, chance or a network planted in a built file -- by bracket or by destructuring too", () => {
+	assert.equal(run("check-clock-and-chance.mjs").status, 0);
+	const bad = [
+		"export const a = Date.now();\n",
+		"export const b = Math.random();\n",
+		'export const c = Math["random"]();\n',
+		"const { random } = Math; export const d = random();\n",
+		"const { random: chance } = Math; export const e = chance();\n",
+		"let r; ({ random: r } = Math); export const f = r();\n",
+		"const m = Math; export const g = m.random();\n",
+		'export const h = Math["max"](1, 2);\n',
+		"export const i = [Math][0].random();\n",
+		"const { now } = Date; export const j = now();\n",
+		"const { now } = performance; export const k = now();\n",
+		"export const l = performance.now();\n",
+		"setTimeout(() => 0, 1);\n",
+		"queueMicrotask(() => 0);\n",
+		"export const n = crypto.getRandomValues(new Uint8Array(1));\n",
+		"export const o = new Date();\n",
+		"export const p = `${Math[`random`]()}`;\n",
+		"function q({ random } = Math) { return random(); }\nexport { q };\n",
+		"export const r = new Intl.DateTimeFormat().format();\n",
+		"const { DateTimeFormat } = Intl; export const s = DateTimeFormat;\n",
+		"export const u = Temporal.Now.instant();\n",
+		"export const v = new WeakRef({});\n",
+		"export const w = new FinalizationRegistry(() => 0);\n",
+	];
+	for (const text of bad) assert.ok(findClockAndChance(text).length > 0, text);
+	const dir = scratch(Object.fromEntries(bad.map((text, i) => [`plant-${String(i).padStart(2, "0")}.js`, text])));
+	try {
+		const r = run("check-clock-and-chance.mjs", dir);
+		assert.equal(r.status, 1);
+		assert.match(r.stdout, /FAIL/);
+		bad.forEach((text, i) => assert.match(r.stdout, new RegExp(`plant-${String(i).padStart(2, "0")}\\.js:`), text));
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("I11: the clock and chance check reads code only, and passes a direct member access by identifier", () => {
+	const clean = [
+		"export const a = Math.max(1, 2);\n",
+		"export const b = Math.min(...[3, 4]) + Math.floor(1.5) + Math.abs(-1);\n",
+		"// Date.now(), Math.random() and setTimeout in a comment\nexport const c = 'Math.random() and Date.now()';\n",
+		"export const d = options.Date + record.performance + x.random;\n",
+		"const { random } = other; export const e = random;\n",
+		"export const f = options.Intl + record.Temporal + held.WeakRef + held.FinalizationRegistry;\n",
+	];
+	for (const text of clean) assert.deepEqual(findClockAndChance(text), [], text);
+	assert.deepEqual(findClockAndChance('export const c = Math["random"]();\n').map((f) => f.finding), ["reads Math.random by brackets", "uses Math as a value, not as a direct member access by identifier"]);
+	assert.throws(() => findClockAndChance('const s = "open;\n'), /could not parse/);
+});
+
+test("I11: the gate runs every check, the clock and chance check among them, after the tests and before the style checks", () => {
+	const gate = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts.gate;
+	assert.equal(gate, "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs");
 });
