@@ -71,3 +71,49 @@ Where the design left a choice open, the build made these; each that a test can 
 - The workflows pin every action by its full commit SHA, the tag named beside it, and every `gh` call names the repository.
 - A release refuses a version outside `0.x`, by D9, and packs once: the consumer test installs the very file the draft attaches.
 - GitHub keeps one pending release run per repository: a third tag pushed while one waits cancels the waiting run, which is re-run by hand.
+
+---
+
+## D3 - 0.1.1 carries the documents and the gate of draw's ratified RELEASES-0.2.md, revision 4, its built files 0.1.0's
+
+**Ruled by:** the director, 2026-10-24 (draw's `H26-14`, every decision RD1 to RD19 at its recommendation; RD12, a patch release carrying the documents, its built files byte-identical to `0.1.0`'s).\
+**Affects:** `CONTRACT.md`, `README.md`, `tools/`, `test/tools/`, `test/contract/contract-coverage.test.js`, `.github/workflows/` and `package.json`; nothing in `src/`.
+
+**Ruling.**\
+`0.1.1` is section 3.4 of draw's `dev/design/components/RELEASES-0.2.md`, revision 4, with what its section 3.5 gives every component: the contract freed of draw's files and design (RD15), the consumer reference (RD16), the gate's checks of B424 stated for snap-grid (RD13), and the vocabulary list renamed, under its guardrails GR2 to GR5.\
+No behaviour changes: `src/`, `tsconfig.json` and TypeScript's version are `0.1.0`'s, so the build is `0.1.0`'s byte for byte, and a release run of `0.1.1` refuses a packed file whose built files are not.\
+D2 stands for everything else.
+
+**Choices made at build.**
+- `CONTRACT.md` states each rule on its own terms, with one provenance line under Reference: SG2's example of a rounding `Math.round` is a grid of pitch 60 and origin 30, its oracle named as `test/support/oracle.js`; SG5 compares the test an application may write, `(v - origin) % pitch === 0`; SG9 states that a rect wholly beyond one side gives the edge position, never a block whose `from` passes its `to`, with no word of the wrap that inverts there; the Errors paragraph's points are "a `DOMPoint`, or an entity of their own"; I10 states what the corpus holds, and its provenance is here; SG10, I11 and Reference name the checks the gate now runs; Edges names `input-tester` and its use of `span`. `test/contract/contract-coverage.test.js` holds that the provenance line is the only one naming draw's records, files or design (GR4).
+- I10's provenance, moved here from the contract: `test/corpus/i10-square-corpus.json` was generated once, by `tools/generate-i10-corpus.mjs`, from draw's `kernel/geometry.mjs`, `app/src/snap.js`, `layouts/layout-canvas.mjs` and `zones/zone-keys.mjs` at draw's `0c59572`, on draw's two grids -- pitch 60 and origin 0 within 900 by 480, and pitch 60 and origin 30 within 930 by 510 -- and five more of the layout table's form; its reference answers are draw's, its `beyond` entries the rects wholly beyond one side that draw's zone wrap (`zones/zone-keys.mjs:28-33`) is never given and where it inverts; `test/corpus/README.md` says how it was made, and the corpus itself holds no word of draw's.
+- The runtime check is vector-scene's (its D2, N5): the free globals of each built file, resolved by TypeScript's checker over the file alone, held to an allow-list that a test holds to exactly the globals the build names; `eval`, `Function` and a call or `new` through a property named `constructor` refused. Its allow-list is the thirteen built-ins snap-grid's build names, `RangeError` among them and `WeakMap` not (erratum 1). It has no platform-member pass: no platform object reaches snap-grid, and its build names `open`, `points`, `r` and `scale`, which are platform members' names; a test holds those names passing. The control is a built file naming `RangeError`; the falsifiers are `WeakMap`, which vector-scene's list allows, and every platform global vector-scene's tests plant, with `BigInt`, `DataView`, `ArrayBuffer` and `DOMPoint` beside them.
+- The clock and chance check is vector-scene's as written -- `Date`, `performance`, the timers, `crypto`, the network, `Intl`, `Temporal`, `WeakRef`, `FinalizationRegistry`, and `Math.random` however it is reached -- its header stated for snap-grid; it is snap-grid's first such check (B414), the gate runs it after the runtime check, and a test holds the gate's script.
+- The release workflow takes vector-scene's retried lookup of the draft and its backstop of 15 minutes, which the gate workflow's two jobs take too. RD12's check is a step after the pack and before the consumer test and the draft: `tools/repeated-build.json` maps a release that changes no built file to the release it repeats -- `0.1.1` to `0.1.0` -- and for such a release the step downloads that release's file and its SHA-512 through the authenticated API (`gh release download`), checks one against the other (`sha512sum -c`), and compares the built files of both tarballs byte for byte with `tools/compare-built.mjs`, which fails on a file in either alone or a byte differing. A release the map does not name passes the step, so the check costs nothing when a release changes code. No action is added, so no pin changes.
+- The README's consumer reference states two answers of section 2 where they bite: which of an application's things owns a point is its own data, the item drawn under a point being `vector-scene`'s `itemAt` (G16); and `inView`'s `scale` under a root scaled differently on each axis is the guide's conservative scale (G15).
+- The vocabulary lists are renamed as section 3.5 says: `gesture-tester` is `input-tester`, its words `keyboard` and `keycap` kept; the tester has no source yet, so no noun of its own joins them.
+- `package.json`'s `files` and `exports`, and `export-map.json`, are `0.1.0`'s: `0.1.1` adds no capability.
+
+**Shown: the built files answer exactly as 0.1.0's.**\
+The `0.1.0` release's tarball was taken from npm's cache, whose SHA-512 is the integrity draw's `package-lock.json` records for the `v0.1.0` release file, and equals draw's installed copy file by file.\
+Built from this repository, `dist/` equals that tarball's `package/dist/`, all 33 files byte for byte; `npm pack` of `0.1.1` compared with it by `tools/compare-built.mjs` passes, 33 built files byte-identical and neither tarball holding another; the release step run locally, `gh` stood in by a script serving the cached file and a SHA-512 written from it, passes, and fails on a packed file with one byte added to `dist/square.js`; and every test, the I10 corpus among them, passes over that build.\
+Identical files answer identically, so `0.1.1` answers every call as `0.1.0` does.
+
+**Errata against draw's design** (`RELEASES-0.2.md` revision 4, section 3.5):
+1. The table of the gates gives snap-grid's runtime check "the thirteen and `RangeError`", vector-scene's thirteen built-ins and one more. Run over `0.1.0`'s build, TypeScript's checker finds that snap-grid names twelve of the thirteen -- `Array`, `Error`, `JSON`, `Map`, `Math`, `Number`, `Object`, `Reflect`, `Set`, `String`, `TypeError` and `undefined` -- and `RangeError`, but not `WeakMap`; and vector-scene's check, which section 3.5 says each component takes, holds its list to exactly the globals the build names, so that a built-in the build stops using leaves the list with it (vector-scene's D2, N5). Fourteen names would fail that test, or need it loosened; so the list is the thirteen snap-grid names, and a falsifier holds `WeakMap` refused. The table should read "the thirteen but `WeakMap`, and `RangeError`".
+
+**Mutants planted (GR2).**\
+Each mutant was planted in a copy of this repository by an exact replacement of one span, built, and run against the tests of what it breaks; each failed them:
+- S1 -- `WeakMap` added to the allow-list: the exact-list test failed.
+- S2 -- `RangeError` taken from it: 2 failed, the check over the build and the control.
+- S3 -- the free globals no longer held to the list: the falsifiers failed.
+- S4 -- a call through `constructor` no longer refused: 2 failed.
+- S5 -- `eval` and `Function` taken from the runtime names: 1 failed.
+- S6 -- `WeakRef` taken from the clock and chance names: its falsifier failed.
+- S7 -- the clock and chance check taken from the gate's script: the gate's script test failed.
+- S8 -- the built files compared by length, not bytes: the comparison's byte falsifier failed.
+- S9 -- a file in the packed tarball alone overlooked: the comparison's falsifier failed.
+- S10 -- `0.1.1` mapped to `0.0.9`: the repeated-build test failed.
+- S11 -- the comparison taken out of the release step: the workflow test failed.
+- S12 -- the contract naming draw's zone wrap and its file again: the GR4 test failed.
+- S13 -- the vocabulary list named `gesture-tester` again: the vocabulary test failed.
