@@ -39,3 +39,10 @@ test("CONTRACT.md carries the six headings of a component entry, in order", () =
 		assert.ok(text.includes(`\n${field}\n`), `the frontmatter holds ${field}`);
 	}
 });
+
+test("CONTRACT.md names no file or design of draw's but its one provenance line (GR4)", () => {
+	const text = fs.readFileSync(path.join(here, "..", "..", "CONTRACT.md"), "utf8");
+	const naming = text.split("\n").filter((line) => /drawv2|draw's|SNAP-GRID\.md|VECTOR-SCENE\.md|INPUT-BINDING\.md|INPUT-CAPTURE\.md|RELEASES-0\.2\.md|the design's|H26|zone|\.mjs:\d|kernel\/|layouts\/|app\/src/.test(line));
+	assert.equal(naming.length, 1, naming.join("\n"));
+	assert.match(naming[0], /^The design of record and the rulings are kept in draw's records, `apnex\/drawv2`\.$/);
+});

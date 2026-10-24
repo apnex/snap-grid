@@ -11,7 +11,7 @@ related: [C0, A3]
 
 # snap-grid
 
-The contract of record for snap-grid, made from section 3 of its design of record, ratified by the director as draw's ruling `H26-4` (`docs/DECISIONS.md` here, `D2`).\
+The contract of record for snap-grid `0.1.1`, each rule stated on its own terms; what was settled at each build is in `docs/DECISIONS.md` (`D2` for `0.1.0`, `D3` for `0.1.1`, whose built files are `0.1.0`'s).\
 It also carries the fields of a mission-kit registry entry, and that entry is generated from this file when the component is filed, never written as a second copy.\
 The registry id is unminted on purpose; one is minted only when the entry is admitted to the registry.
 
@@ -66,14 +66,14 @@ The trait column names any trait a system takes on by using the capability.
 | `grid-positions-in-view` | provides | none | The offered positions within a view, thinned to a spacing on screen, in one order (SG6). | none |
 | `next-grid-position` | provides | none | The offered neighbour of an offered position in a named direction, or none (SG7). | none |
 | `grid-position-span` | provides | none | The region a block runs through and the region its cells cover (SG8). | none |
-| `enclosing-grid-block` | provides | none | The smallest block of offered positions whose span runs through a rect, or the shape's answer where none does (SG9; the design's decision D10). | none |
+| `enclosing-grid-block` | provides | none | The smallest block of offered positions whose span runs through a rect, or the shape's answer where none does (SG9). | none |
 | `grid-shape-conformance` | provides | none | A kit that judges whether a shape keeps the invariants below over cases it is given (SG11). | none |
 
 None requires another component's capability, and none brings a trait: snap-grid keeps nothing between calls, coordinates no actors and contains no model.
 
 **Errors.**\
 Every function validates its arguments before it computes.\
-A point may be any object, of any prototype, with number properties `x` and `y`, because consumers pass what they hold -- draw passes `DOMPoint`s and its own entities; a position, a region, a view and an options argument are plain objects (SG1) holding the properties their forms name and no other, an options argument any of its properties or none.\
+A point may be any object, of any prototype, with number properties `x` and `y`, because consumers pass what they hold -- a `DOMPoint`, or an entity of their own; a position, a region, a view and an options argument are plain objects (SG1) holding the properties their forms name and no other, an options argument any of its properties or none.\
 A point is a non-null value of type `object`, so a function is not one; its `x` and `y` are read once each through ordinary property access, so a `DOMPoint`'s getters answer, while every other argument is read through its own data properties, so no getter of it is called.\
 An error a getter or a Proxy trap throws while an argument is read is rethrown as the function's own `TypeError`, its message beginning with the function's name.\
 A malformed argument -- a point that is not an object with number `x` and `y`, a position not of the shape's form, a region or view not of the vocabulary's form, an option out of range, a direction the grid does not list -- throws a `TypeError` whose message begins with the function's name.\
@@ -120,8 +120,8 @@ Tested by: `test/contract/declared-grid.test.js`.
 **SG2 -- The domain, exactness, and what the grid offers.**\
 A square grid's domain is every number of magnitude at most 2^50, and every answer it gives is exact: each formula below is stated in real arithmetic, and is computed exactly for every input in the domain, so no answer needs a tolerance.\
 Over integers, binary64 is exact already: the offered ranges, `pointOf` and `span` form only integers and half-integers below 2^52 in magnitude, and a quotient of two integers that size rounds onto the correct side of every integer and half-integer.\
-Over a coordinate that is not an integer it is not: `Math.round((v - origin) / pitch)` rounds `v - origin` before it divides, and on draw's zone grid (pitch 60, origin 30) sends `v = -60 - 2^-47` to the position at -30 when the one at -90 is nearer.\
-So `nearest`, `inView` and `enclosing` compute exactly; splitting `v` into its integer part and its fraction does it in binary64, as a prototype checked against an exact rational oracle over 300,000 points shows (kept outside the repository with the design's readings), and their tests hold the build to such an oracle.\
+Over a coordinate that is not an integer it is not: `Math.round((v - origin) / pitch)` rounds `v - origin` before it divides, and on a grid of pitch 60 and origin 30 sends `v = -60 - 2^-47` to the position at -30 when the one at -90 is nearer.\
+So `nearest`, `inView` and `enclosing` compute exactly; splitting `v` into its integer part and its fraction does it in binary64, as that rule checked against an exact rational oracle over 300,000 points showed, and their tests hold the build to such an oracle (`test/support/oracle.js`).\
 On each axis, the least and greatest offered index are `ceil((lo - origin) / pitch)` and `floor((hi - origin) / pitch)`, where `lo` and `hi` are the bounds on that axis, or -2^50 and 2^50 with no bounds; so every offered index is below 2^52 in magnitude.\
 `nearest`, `positionAt`, `inView`, `next` and `enclosing` answer only with offered positions; `pointOf` and `span` compute for any representable position, because they compute rather than choose.\
 `grid.offers(position)` says whether a well-formed position is offered.\
@@ -142,8 +142,8 @@ Tested by: `test/contract/grid-position-point.test.js`.
 **SG5 -- Exactly on.**\
 `grid.positionAt(point)` returns `n = grid.nearest(point)` when `grid.pointOf(n)` has exactly the point's `x` and `y` (`===`), and `null` otherwise.\
 Defined through `nearest` and `pointOf`, it means the same for every shape, and needs no tolerance.\
-Draw's test, `(v - origin) % pitch === 0` on each axis, agrees with it for every integer coordinate in the domain -- every coordinate draw's snapping makes -- on a grid with no bounds, and within the bounds on one with them; beyond the bounds `positionAt` answers `null` where draw's test, which knows no bounds, can pass.\
-It disagrees where `v - origin` rounds: on the zone grid it accepts `x = -30 + 2^-48`, one rounding from a lattice point, which `positionAt` refuses; that is one of the differences the design's decision D1 makes in draw (its section 6.3).\
+The test an application may write instead, `(v - origin) % pitch === 0` on each axis, agrees with it for every integer coordinate in the domain on a grid with no bounds, and within the bounds on one with them; beyond the bounds `positionAt` answers `null` where that test, which knows no bounds, can pass.\
+It disagrees where `v - origin` rounds: on a grid of pitch 60 and origin 30 it accepts `x = -30 + 2^-48`, one rounding from a lattice point, which `positionAt` refuses.\
 Tested by: `test/contract/exact-grid-position.test.js`.
 
 **SG6 -- In view.**\
@@ -183,14 +183,13 @@ Tested by: `test/contract/grid-position-span.test.js`.
 **SG9 -- Enclosing.**\
 `grid.enclosing(rect)` returns a block `{ from, to }` of offered positions, or `null`.\
 Where some block's `through` contains the rect, it is the smallest such block; where none does, the shape's rule says what it answers; and it is `null` for a rect with an edge that is not finite or lies outside the domain (Errors, above).\
-On a square grid, on each axis: `from` is `floor((min - origin) / pitch)` and `to` is `ceil((max - origin) / pitch)`, computed exactly (SG2), each clamped to the least and greatest offered index, then `+ 0`, where `min` and `max` are the rect's edges; so a rect reaching past the offered positions gives the block clamped to them, and a rect wholly beyond one side gives a block of the one edge position there.\
-This is draw's zone wrap (`zones/zone-keys.mjs:28-33`) as a question any shape can answer, for every rect the wrap is given -- a selection's bounds, within the extent; for a rect wholly beyond one side the wrap, which clamps its low edge only from below and its high edge only from above, inverts its block, where SG9 gives the edge position there.\
+On a square grid, on each axis: `from` is `floor((min - origin) / pitch)` and `to` is `ceil((max - origin) / pitch)`, computed exactly (SG2), each clamped to the least and greatest offered index, then `+ 0`, where `min` and `max` are the rect's edges; so a rect reaching past the offered positions gives the block clamped to them, and a rect wholly beyond one side gives a block of the one edge position there, never a block whose `from` passes its `to`.\
 Tested by: `test/contract/enclosing-grid-block.test.js`.
 
 **SG10 -- Exports.**\
 `@apnex/snap-grid` exports `openGrid` and `square`; `@apnex/snap-grid/conformance` exports `checkGridShape`.\
-The package imports no other package and no module particular to one runtime, so the same files run in Node and in a browser.\
-Tested by: `test/contract/public-surface.test.js`, the runtime check (`tools/check-runtime.mjs`) and the consumer test (`tools/consumer-test.mjs`).
+The package imports no other package and no module particular to one runtime, names no global but the JavaScript built-ins it uses, and reads no clock and no randomness and holds no timer, so the same files run in Node and in a browser and answer the same there.\
+Tested by: `test/contract/public-surface.test.js`, the runtime check (`tools/check-runtime.mjs`), the clock and chance check (`tools/check-clock-and-chance.mjs`) and the consumer test (`tools/consumer-test.mjs`).
 
 **SG11 -- Shapes are adapters, proved by a kit.**\
 A shape is a frozen object `{ name, open }`, `name` a non-empty string and `open(declaration)` returning what `openGrid` returns for it, its grid offering everything SG2 to SG9 name: `declaration`, `directions`, `opposite`, `offers`, `nearest`, `pointOf`, `positionAt`, `inView`, `next`, `span`, `regionContains` and `enclosing`.\
@@ -249,8 +248,8 @@ Each invariant holds for every grid of every shape.\
 | I7 | The same declaration and arguments always give the same answer, field for field and in the same order; no answer holds `-0`; every answer is frozen to its depth. | kit |
 | I8 | `enclosing(rect)` is `null` or a block of offered positions; for a case rect, the block's `through` holds the rect's four corners and every case point in the rect (kit). No corner can move inward and keep that true, and the shape's rule decides a rect no block contains (shape). | kit, shape |
 | I9 | `openGrid` never throws for any JSON value, and answers every declaration with exactly the problems SG1 gives, from a table of cases, escaped pointers and code-unit order among them. | snap-grid |
-| I10 | `square` reproduces draw's arithmetic: a corpus of points, positions and answers, generated once from draw's `kernel/geometry.mjs`, `app/src/snap.js`, `layouts/layout-canvas.mjs` and `zones/zone-keys.mjs` at `0c59572` over coordinates in the domain, and stated as square-grid cases with no word of draw's, passes with `-0` told apart from `0` -- except at the points the corpus lists apart, each with draw's answer, the exact one, and every reason that applies: `rounding`, where draw's float arithmetic is not exact; `domain`, where draw's answer lies outside the 2^50 domain, so snap-grid clamps; and `beyond`, a rect wholly beyond one side of the bounded grid, which draw's wrap is never given and where it inverts (SG9); a point with two causes carries both (the design's D1 and section 6.3). | snap-grid |
-| I11 | The source names no consumer's vocabulary, and the built files import no package and no runtime-specific module or global (the design's section 7.2). | gate |
+| I10 | `square` reproduces the grid arithmetic its corpus was made from: the corpus's points, positions and answers, over coordinates in the domain and stated as square-grid cases, pass with `-0` told apart from `0` -- except at the points the corpus lists apart, each with the reference answer, the exact one, and every reason that applies: `rounding`, where the reference's binary64 arithmetic is not exact; `domain`, where the reference answer lies outside the 2^50 domain, so snap-grid clamps; and `beyond`, a rect wholly beyond one side of a bounded grid, where a reference that clamps the low edge only from below and the high edge only from above gives a block whose `from` passes its `to`, and SG9 gives the edge position there; a point with two causes carries both. The corpus's provenance -- what it was made from, and how -- is in `docs/DECISIONS.md` (D3) and `test/corpus/README.md`. | snap-grid |
+| I11 | The source names no consumer's vocabulary; the built files import no package and no runtime-specific module, name no global but the JavaScript built-ins the build uses and no route to `Function`, and read no clock, timer, source of chance or network. | gate |
 
 The kit measures nearness in binary64 because it has no exact measure for an arbitrary shape.\
 A square grid's exact answer never loses that comparison: its distance on each axis is no greater than any other position's, and rounding never reverses an order, so its computed distance is never the greater.
@@ -263,8 +262,8 @@ This repository, `apnex/snap-grid`, and its package `@apnex/snap-grid`, released
 The package exports `openGrid` and `square`, and `@apnex/snap-grid/conformance` exports `checkGridShape`, as `export-map.json` records.\
 The code is TypeScript in `src/`, built to `dist/`, which only a release holds.\
 The tests are in `test/`: one file per capability in `test/contract/`, the I10 corpus and its test in `test/corpus/`, and `ring-test` in `test/fixtures/`.\
-The gate, `npm run gate`, builds, runs the tests, the vocabulary, runtime and export-map checks in `tools/`, and mission-kit's style checks.\
-The design of record is draw's `dev/design/components/SNAP-GRID.md` (`apnex/drawv2`), whose section 3 this contract carries, whose section 4 holds the invariants above, and whose section 7 holds the repository, the gate and the release this repository follows.
+The gate, `npm run gate`, builds, runs the tests, the vocabulary, runtime, clock and chance, and export-map checks in `tools/`, and mission-kit's style checks.\
+The design of record and the rulings are kept in draw's records, `apnex/drawv2`.
 
 ---
 
@@ -282,7 +281,7 @@ The design of record is draw's `dev/design/components/SNAP-GRID.md` (`apnex/draw
 | which grids an application has, stored or edited | not a store |
 | whether something may sit at a position | not an authority over occupancy |
 | freehand placement, or snapping to other things' edges | not a general snapping engine -- it knows only its grid |
-| a grid of fractional pitch | not yet: pitches and origins are integers until a consumer needs otherwise (the design's D1) |
+| a grid of fractional pitch | not yet: pitches and origins are integers until a consumer needs otherwise |
 
 ---
 
@@ -296,4 +295,4 @@ Internal and sovereign: a measured gap is recorded where both sides can see it, 
 
 **Contains:** the `square` shape and the conformance kit.\
 **Consumes:** nothing.\
-**Consumed-by:** draw (H26.1), then the gesture tester (H26.5).
+**Consumed-by:** draw, then `input-tester`, which places every key and mouse button by `span` (SG8) on one square grid.
