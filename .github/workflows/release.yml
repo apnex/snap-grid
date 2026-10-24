@@ -93,19 +93,10 @@ jobs:
 
       # D3: a release that changes no built file names the release it repeats, and its built files must be
       # that release's, byte for byte -- the release's own file downloaded through the authenticated API
-      # and checked against the SHA-512 attached beside it
+      # and checked against the SHA-512 attached beside it; tools/check-repeated-build.mjs does it all, and
+      # passes a release the map does not name
       - name: refuse built files that differ from the release this one repeats, when it names one
-        run: |
-          base=$(node -p "JSON.parse(require('fs').readFileSync('tools/repeated-build.json', 'utf8')).releases[require('./package.json').version] ?? ''")
-          if [ -z "$base" ]; then
-            echo "this release names no release whose built files it repeats"
-            exit 0
-          fi
-          mkdir -p "$RUNNER_TEMP/repeated"
-          gh release download "v$base" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/repeated" \
-            --pattern "apnex-snap-grid-$base.tgz" --pattern "apnex-snap-grid-$base.tgz.sha512"
-          (cd "$RUNNER_TEMP/repeated" && sha512sum -c "apnex-snap-grid-$base.tgz.sha512")
-          node tools/compare-built.mjs "$RUNNER_TEMP/packed/$FILE" "$RUNNER_TEMP/repeated/apnex-snap-grid-$base.tgz"
+        run: node tools/check-repeated-build.mjs "$RUNNER_TEMP/packed/$FILE" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/repeated"
 
       - name: the consumer test, on the packed file
         run: npm run consumer -- --tarball "$RUNNER_TEMP/packed/$FILE"

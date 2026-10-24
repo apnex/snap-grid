@@ -2,9 +2,9 @@
 // compare-built - the built files of two package tarballs, byte for byte (docs/DECISIONS.md, D3): fails
 // unless both hold exactly the same files under `package/dist/`, each with the same bytes. A release that
 // changes no built file -- a patch carrying documents alone -- names in tools/repeated-build.json the
-// release whose built files it repeats, and the release run compares the tarball it packed with that
-// release's, downloaded through the authenticated API and checked against its own SHA-512, before it makes
-// a draft (.github/workflows/release.yml).
+// release whose built files it repeats, and the release run's tools/check-repeated-build.mjs compares the
+// tarball it packed with that release's, downloaded through the authenticated API and checked against its
+// own SHA-512, before it makes a draft (.github/workflows/release.yml).
 //
 // Each tarball is listed and unpacked by `tar` into a scratch directory, which is removed afterwards.
 //

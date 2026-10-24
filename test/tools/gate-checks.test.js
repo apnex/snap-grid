@@ -1,17 +1,16 @@
 // gate-checks - the gate's own checks (I11) can fail: the vocabulary check, the runtime check -- vector-scene's,
 // its allow-list holding exactly the built-ins snap-grid's build names and no platform-member pass -- the clock
-// and chance check, vector-scene's as written, and the comparison of a release's built files with the release
-// it repeats (docs/DECISIONS.md, D3) each pass over this repository and fail over a copy holding what it
-// exists to refuse.
+// and chance check, vector-scene's as written, and the release run's check that a release's built files are
+// those of the release it repeats (docs/DECISIONS.md, D3), run end to end with a stand-in gh, each pass over
+// this repository and fail over a copy holding what it exists to refuse.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-
-import { execFileSync } from "node:child_process";
 
 import { candidateWords, findVocabulary, readVocabulary, splitWords } from "../../tools/check-vocabulary.mjs";
 import { findClockAndChance } from "../../tools/check-clock-and-chance.mjs";
@@ -262,15 +261,109 @@ test("D3: the built files of two tarballs compare byte for byte -- the same file
 	}
 });
 
-test("D3, RD12: this release repeats 0.1.0's built files, as tools/repeated-build.json records, and the release workflow refuses a packed file whose built files differ before it drafts", () => {
+test("D3, RD12: this release repeats 0.1.0's built files, as tools/repeated-build.json records, and the release workflow runs tools/check-repeated-build.mjs on the packed file after the pack and before the consumer test and the draft", () => {
 	const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 	assert.equal(repeatedBuild(pkg.version), "0.1.0");
 	assert.equal(repeatedBuild("0.2.0"), null, "a release not named repeats nothing");
 	const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
-	const compare = workflow.indexOf("node tools/compare-built.mjs");
-	assert.ok(compare > workflow.indexOf("npm pack"), "after the pack");
-	assert.ok(compare < workflow.indexOf("gh release create"), "before the draft");
-	assert.match(workflow, /sha512sum -c "apnex-snap-grid-\$base\.tgz\.sha512"/, "the release it repeats checked against its own SHA-512");
+	const call = 'run: node tools/check-repeated-build.mjs "$RUNNER_TEMP/packed/$FILE" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/repeated"';
+	const lines = workflow.split("\n").filter((line) => !line.trim().startsWith("#") && line.includes("check-repeated-build.mjs"));
+	assert.deepEqual(lines.map((line) => line.trim()), [call], "the step calls the script once, on the packed file, its version package.json's, and nothing more");
+	const at = workflow.indexOf(call);
+	assert.ok(at > workflow.indexOf("npm pack"), "after the pack");
+	assert.ok(at < workflow.indexOf("npm run consumer"), "before the consumer test");
+	assert.ok(at < workflow.indexOf("gh release create"), "before the draft");
+	assert.ok(!workflow.includes("releases[") && !workflow.includes("compare-built.mjs") && !workflow.includes("gh release download"), "no lookup, download or comparison of the workflow's own: the script does each");
+});
+
+/**
+ * A stand-in for gh, first on PATH: it writes each call's arguments as a line of JSON into its log, and for
+ * `release download` copies each --pattern from its assets into --dir, failing as gh does when one is missing.
+ */
+function standInGh(dir) {
+	const bin = path.join(dir, "bin");
+	const assets = path.join(dir, "assets");
+	const log = path.join(dir, "gh-calls.log");
+	fs.mkdirSync(bin);
+	fs.mkdirSync(assets);
+	fs.writeFileSync(path.join(bin, "gh.mjs"), `import fs from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");
+if (args[0] !== "release" || args[1] !== "download") process.exit(2);
+const into = args[args.indexOf("--dir") + 1];
+for (let i = 0; i < args.length; i++) {
+	if (args[i] !== "--pattern") continue;
+	const from = path.join(${JSON.stringify(assets)}, args[i + 1]);
+	if (!fs.existsSync(from)) { console.error("no asset matches " + args[i + 1]); process.exit(1); }
+	fs.copyFileSync(from, path.join(into, args[i + 1]));
+}
+`);
+	fs.writeFileSync(path.join(bin, "gh"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(bin, "gh.mjs"))} "$@"\n`, { mode: 0o755 });
+	const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+	const run = (packed, ...extra) => {
+		fs.rmSync(log, { force: true });
+		const into = fs.mkdtempSync(path.join(dir, "repeated-"));
+		const r = spawnSync(process.execPath, [path.join(root, "tools", "check-repeated-build.mjs"), packed, "--repo", "apnex/snap-grid", "--dir", into, ...extra], { encoding: "utf8", env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
+		return { status: r.status, out: `${r.stdout}${r.stderr}`, calls: calls(), into };
+	};
+	return { assets, run };
+}
+
+/** The SHA-512 line sha512sum writes for a file. */
+const sha512Line = (file, name = path.basename(file)) => `${crypto.createHash("sha512").update(fs.readFileSync(file)).digest("hex")}  ${name}\n`;
+
+test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh -- a pass, a one-byte difference, a SHA-512 mismatch, a SHA-512 file naming another file, a missing asset, and a version the map does not name, which skips and asks nothing of gh", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-repeated-"));
+	try {
+		const gh = standInGh(dir);
+		const built = { "dist/index.js": "export * from \"./a.js\";\n", "dist/a.js": "export const a = 1;\n", "dist/a.js.map": "{}" };
+		const base = tarball(dir, "apnex-snap-grid-0.1.0", { ...built, "package.json": "{\"version\":\"0.1.0\"}" });
+		fs.copyFileSync(base, path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz"));
+		fs.writeFileSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"), sha512Line(base));
+		const same = tarball(dir, "same", { ...built, "package.json": "{\"version\":\"0.1.1\"}", "README.md": "new" });
+		const byte = tarball(dir, "byte", { ...built, "dist/a.js": "export const a = 2;\n", "package.json": "{\"version\":\"0.1.1\"}" });
+
+		// a pass: the version is package.json's, 0.1.1, which repeats 0.1.0; gh is asked for that release's two files
+		const pass = gh.run(same);
+		assert.equal(pass.status, 0, pass.out);
+		assert.match(pass.out, /check-repeated-build: PASS -- 3 built file\(s\) of same\.tgz are byte-identical to release v0\.1\.0's/);
+		assert.match(pass.out, /apnex-snap-grid-0\.1\.0\.tgz matches the SHA-512 attached beside it/);
+		assert.deepEqual(pass.calls, [["release", "download", "v0.1.0", "--repo", "apnex/snap-grid", "--dir", pass.into, "--pattern", "apnex-snap-grid-0.1.0.tgz", "--pattern", "apnex-snap-grid-0.1.0.tgz.sha512"]]);
+
+		// a one-byte difference in a built file fails, naming it
+		const differ = gh.run(byte);
+		assert.equal(differ.status, 1, differ.out);
+		assert.match(differ.out, /dist\/a\.js differs/);
+		assert.match(differ.out, /check-repeated-build: FAIL -- 1 difference\(s\) between the built files of byte\.tgz and of release v0\.1\.0/);
+
+		// a downloaded tarball that does not match its SHA-512 fails before anything is compared
+		fs.writeFileSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"), sha512Line(same, "apnex-snap-grid-0.1.0.tgz"));
+		const mismatch = gh.run(same);
+		assert.equal(mismatch.status, 1, mismatch.out);
+		assert.match(mismatch.out, /check-repeated-build: FAIL -- apnex-snap-grid-0\.1\.0\.tgz does not match the SHA-512 attached beside it/);
+		assert.doesNotMatch(mismatch.out, /PASS|differs/);
+
+		// a SHA-512 file whose digest is right but names another file fails too
+		fs.writeFileSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"), sha512Line(base, "other.tgz"));
+		const named = gh.run(same);
+		assert.equal(named.status, 1, named.out);
+		assert.match(named.out, /names other\.tgz, not apnex-snap-grid-0\.1\.0\.tgz/);
+
+		// an asset gh cannot find fails
+		fs.rmSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"));
+		const missing = gh.run(same);
+		assert.equal(missing.status, 1, missing.out);
+		assert.match(missing.out, /gh could not download apnex-snap-grid-0\.1\.0\.tgz and its SHA-512 from release v0\.1\.0 of apnex\/snap-grid/);
+
+		// a version the map does not name skips, gh never asked, whatever the packed file holds
+		const skip = gh.run(byte, "--version", "0.2.0");
+		assert.equal(skip.status, 0, skip.out);
+		assert.match(skip.out, /check-repeated-build: SKIP -- 0\.2\.0 names no release whose built files it repeats/);
+		assert.deepEqual(skip.calls, []);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 test("I11: the gate runs every check, the clock and chance check among them, after the tests and before the style checks", () => {
