@@ -126,3 +126,18 @@ Each mutant was planted in a copy of this repository by an exact replacement of 
 The run-verifier sealed `0.1.1` with one should-fix: the gate held where the release step sat and its `sha512sum -c` line, not what the step compared, and its mutants G4 and G8 survived.\
 The step's body moved into `tools/check-repeated-build.mjs`, the version looked up by `repeatedBuild` rather than the workflow's inline lookup, and the workflow calls it on the packed file; `test/tools/gate-checks.test.js` runs it end to end with a stand-in `gh` first on `PATH` -- a pass, gh asked for exactly the release's two files; a one-byte difference; a SHA-512 mismatch; a SHA-512 file naming another file; an asset gh cannot find; and a version the map does not name, which skips and asks nothing of gh -- and holds the workflow's call, whole, after the pack and before the consumer test and the draft.\
 G4 and G8 now fail, as the list above records with every mutant re-run against the final tests.
+
+---
+
+## D4 - The tests run on test-harness
+
+**Ruled by:** the director, 2026-10-31 (draw's `H26-19` as amended: no test run may leave anything behind, and what the repositories' copies share is one component, `test-harness`, taken by each in its tests alone, pinned to its release file).\
+**Affects:** `package.json` and its lockfile, `tools/consumer-test.mjs` and the tests that make scratch folders; nothing in `src/`, and nothing the package ships.
+
+**Ruling.**\
+`@apnex/test-harness` `0.1.0` is a development dependency, pinned to its release file by its URL and, in the lockfile, by its hash; `files` is unchanged, so no file of it is packed.\
+`npm test` runs the tests under its runner, `test-harness run`, and `npm run consumer` the consumer test under `test-harness exec`, so each run has a folder of its own and fails on anything left in it or still running after it.\
+The consumer test serves the page and the installed files with `serveStatic` and loads them in a one-shot Chrome with `dumpDom`, in a folder of its own -- so Chrome's lock folder, crash reporter and keyring use no longer reach the caller's temporary folder or the user's own -- and its scratch folder is a `scratchFolder`, removed however the test ends; the page, the import map and the exercise are its own, as before.\
+The tests' scratch folders are `scratchFolder`s too.\
+The consumer test's `--keep` is gone: a folder kept would be one the run fails on.\
+The runner is not given `--test-force-exit`, which `test-harness`'s README recommends: on Node 22 it cut the results a test file reports when they are many -- `test/contract/declared-grid.test.js` here reported 61 of its 78 tests with it -- and no test here leaves anything running for it to end.

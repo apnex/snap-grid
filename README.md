@@ -120,7 +120,8 @@ A coordinate that is a number but not finite, or beyond 2^50, is well formed: `n
 
 ## Test
 
-The gate builds, runs every test, the vocabulary, runtime, clock and chance, and export-map checks, and mission-kit's style checks over the Markdown.
+The gate builds, runs every test, the vocabulary, runtime, clock and chance, and export-map checks, and mission-kit's style checks over the Markdown.\
+The tests, and the consumer test, run under `test-harness`'s runner, a development dependency pinned to its release file, which fails a run that leaves a file, a folder or a process behind.
 
 Run the gate with a mission-kit checkout beside this repository, or with `MISSION_KIT` naming one:
 ```bash
