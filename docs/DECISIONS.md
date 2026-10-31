@@ -141,3 +141,14 @@ The consumer test serves the page and the installed files with `serveStatic` and
 The tests' scratch folders are `scratchFolder`s too.\
 The consumer test's `--keep` is gone: a folder kept would be one the run fails on.\
 The runner is not given `--test-force-exit`, which `test-harness`'s README recommends: on Node 22 it cut the results a test file reports when they are many -- `test/contract/declared-grid.test.js` here reported 61 of its 78 tests with it -- and no test here leaves anything running for it to end.
+
+---
+
+## D5 - The tests run on clean-runner and headless-chromium
+
+**Ruled by:** the director, 2026-10-31 (draw's `H26-19`, amended again: the shared component split by its two duties into `clean-runner` and `headless-chromium`, and purged, no legacy retained).\
+**Affects:** `package.json` and its lockfile, `README.md`, `tools/consumer-test.mjs` and the tests that import either; nothing in `src/`, and nothing the package ships.
+
+**Ruling.**\
+The development dependency `D4` names is replaced by two, each pinned to its release file by its URL and, in the lockfile, by its hash: `@apnex/clean-runner` `0.2.0`, for the runner -- `clean-runner run` and `clean-runner exec`, and `scratchFolder` -- and `@apnex/headless-chromium` `0.1.0`, for `dumpDom` and `serveStatic`; `files` is unchanged, so neither is packed.\
+The calls are `D4`'s, each now from the component that holds it, and the runner is still given no `--test-force-exit`.

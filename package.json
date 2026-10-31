@@ -32,12 +32,13 @@
   "scripts": {
     "build": "node tools/clean-dist.mjs && tsc -p .",
     "prepack": "npm run build",
-    "test": "npm run build && test-harness run \"test/**/*.test.js\"",
+    "test": "npm run build && clean-runner run \"test/**/*.test.js\"",
     "gate": "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
-    "consumer": "test-harness exec node tools/consumer-test.mjs"
+    "consumer": "clean-runner exec node tools/consumer-test.mjs"
   },
   "devDependencies": {
-    "@apnex/test-harness": "https://github.com/apnex/test-harness/releases/download/v0.1.0/apnex-test-harness-0.1.0.tgz",
+    "@apnex/clean-runner": "https://github.com/apnex/clean-runner/releases/download/v0.2.0/apnex-clean-runner-0.2.0.tgz",
+    "@apnex/headless-chromium": "https://github.com/apnex/headless-chromium/releases/download/v0.1.0/apnex-headless-chromium-0.1.0.tgz",
     "typescript": "5.9.3"
   }
 }
