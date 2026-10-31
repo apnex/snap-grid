@@ -6,10 +6,11 @@
 // and fails on a map that is wrong.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { scratchFolder } from "@apnex/test-harness";
 
 import { contractRows, exportMapProblems } from "../../tools/check-export-map.mjs";
 
@@ -48,9 +49,10 @@ test("every contract row is served by an export or deferred with a ruling", () =
 	for (const [row, ruling] of Object.entries(map.deferred)) assert.match(ruling, /^D\d+$/, `${row} is deferred without a ruling`);
 });
 
-test("the package declares no dependency, and pins TypeScript", () => {
+test("the package declares no dependency, and pins TypeScript and test-harness, its tests' runner, by its release file", () => {
 	assert.equal(pkg.dependencies, undefined);
 	assert.equal(pkg.devDependencies.typescript, "5.9.3");
+	assert.equal(pkg.devDependencies["@apnex/test-harness"], "https://github.com/apnex/test-harness/releases/download/v0.1.0/apnex-test-harness-0.1.0.tgz");
 	assert.equal(pkg.type, "module");
 	assert.equal(pkg.engines.node, ">=22");
 	assert.deepEqual(pkg.files.sort(), ["CONTRACT.md", "LICENSE", "README.md", "VISION.md", "dist"]);
@@ -58,7 +60,7 @@ test("the package declares no dependency, and pins TypeScript", () => {
 
 test("the export-map check passes here, and fails on a map that names an export the package lacks or misses a row", async () => {
 	assert.deepEqual(await exportMapProblems(root), []);
-	const copy = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-map-"));
+	const copy = scratchFolder("snap-grid-map-");
 	try {
 		for (const f of ["package.json", "CONTRACT.md", "export-map.json"]) fs.copyFileSync(path.join(root, f), path.join(copy, f));
 		fs.mkdirSync(path.join(copy, "docs"));

@@ -7,10 +7,11 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { scratchFolder } from "@apnex/test-harness";
 
 import { candidateWords, findVocabulary, readVocabulary, splitWords } from "../../tools/check-vocabulary.mjs";
 import { findClockAndChance } from "../../tools/check-clock-and-chance.mjs";
@@ -20,7 +21,7 @@ import { compareBuilt, repeatedBuild } from "../../tools/compare-built.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const run = (tool, ...args) => spawnSync(process.execPath, [path.join(root, "tools", tool), ...args], { encoding: "utf8" });
 const scratch = (files) => {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-check-"));
+	const dir = scratchFolder("snap-grid-check-");
 	for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text);
 	return dir;
 };
@@ -237,7 +238,7 @@ function tarball(dir, name, files) {
 }
 
 test("D3: the built files of two tarballs compare byte for byte -- the same files pass whatever the documents and package.json say; a byte changed, a file added and a file missing each fail", () => {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-built-"));
+	const dir = scratchFolder("snap-grid-built-");
 	try {
 		const built = { "dist/index.js": "export * from \"./a.js\";\n", "dist/a.js": "export const a = 1;\n", "dist/a.js.map": "{}" };
 		const base = tarball(dir, "base", { ...built, "package.json": "{\"version\":\"0.1.0\"}", "README.md": "old" });
@@ -314,7 +315,7 @@ for (let i = 0; i < args.length; i++) {
 const sha512Line = (file, name = path.basename(file)) => `${crypto.createHash("sha512").update(fs.readFileSync(file)).digest("hex")}  ${name}\n`;
 
 test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh -- a pass, a one-byte difference, a SHA-512 mismatch, a SHA-512 file naming another file, a missing asset, and a version the map does not name, which skips and asks nothing of gh", () => {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-grid-repeated-"));
+	const dir = scratchFolder("snap-grid-repeated-");
 	try {
 		const gh = standInGh(dir);
 		const built = { "dist/index.js": "export * from \"./a.js\";\n", "dist/a.js": "export const a = 1;\n", "dist/a.js.map": "{}" };
