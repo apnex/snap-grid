@@ -64,9 +64,11 @@ class Thrown {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+/** A thrown value's message, always a string: an Error's message taken as a string, anything else by String. */
 const messageOf = (e: unknown): string => {
 	try {
-		return e instanceof Error ? e.message : String(e);
+		const m: unknown = e instanceof Error ? e.message : e;
+		return typeof m === "string" ? m : String(m);
 	} catch {
 		return "an unreadable error";
 	}

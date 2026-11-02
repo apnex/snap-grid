@@ -447,3 +447,33 @@ test("SG11: the copy's map full in the middle of an argument -- with the global 
 	assert.ok(Array.isArray(copied.big) && copied.big.length === 2000);
 	assert.deepEqual(copied.after, {}, "after, met once the map was full, copied as an empty object");
 });
+
+test("SG11: a thrown error's message is taken as a string -- a shape throwing an Error whose message is an object gives a failure list frozen to its depth, every got's thrown a string, and the shape's object neither held nor frozen", () => {
+	const message = { k: [1] };
+	const thrower = () => {
+		throw Object.assign(new Error("e"), { message });
+	};
+	const odd = Object.freeze({
+		name: "odd message",
+		open: (declaration) => {
+			const opened = square.open(declaration);
+			const methods = { opposite: thrower, offers: thrower, nearest: thrower, pointOf: thrower, positionAt: thrower, inView: thrower, next: thrower, span: thrower, regionContains: thrower, enclosing: thrower };
+			return Object.freeze({ ok: true, grid: Object.freeze({ declaration: opened.grid.declaration, directions: Object.freeze([]), ...methods }) });
+		},
+	});
+	const c = { name: "odd message", declaration: { shape: "square", pitch: 1, origin: { x: 0, y: 0 } }, points: [{ x: 1, y: 2 }], positions: [], views: [], blocks: [], rects: [] };
+	const failures = checkGridShape(odd, [c]);
+	assert.deepEqual(failures.map((f) => f.invariant), ["I2", "I3", "I7", "I7"]);
+	assert.ok(failures.every((f) => typeof f.got.thrown === "string"), "thrown is always a string");
+	assert.deepEqual(failures[0].got, { thrown: String(message) });
+	const held = new Set();
+	const walk = (v) => {
+		if (((typeof v !== "object" || v === null) && typeof v !== "function") || held.has(v)) return;
+		held.add(v);
+		for (const k of Reflect.ownKeys(v)) walk(Object.getOwnPropertyDescriptor(v, k).value);
+	};
+	walk(failures);
+	assert.ok(!held.has(message) && !held.has(message.k), "the shape's object is not held");
+	assert.ok(!Object.isFrozen(message) && !Object.isFrozen(message.k), "nor frozen");
+	assert.ok(isFrozenToDepth(failures));
+});
