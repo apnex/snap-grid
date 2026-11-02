@@ -213,7 +213,10 @@ Every run of `npm test` holds the same property at a small size: with the global
 **Found, and not fixed.**\
 Each gives less than the contract promises, but none is the freeze, none can be fixed by freezing as made, and the move names none; each needs a walk that tracks what it has seen without one `Set` or `Map`, a change of the kit's or the reader's design, and so the director's to rule, its revival trigger a consumer asking past it:
 1. The kit's walk over a shape's answer, behind its checks for `-0` and for being frozen (I7 and `open`), tracks what it has seen in one `Set`, which cycles in a shape's answer need; judging `square` over a view pair whose answer passes 5,592,404 positions records a false I7 failure, `{ thrown: 'Set maximum size exceeded' }`, where under `0.1.1` that pair failed I4 and I7 because `inView` threw.
-2. The kit's copy of a failure's argument or `got` keys a `Map`, so one value copying to more than 2^24 objects is copied short, its parts past that as empty objects, where SG11 gives a deep copy of its plain data; this entry first said the kit throws, which a probe after B1 refuted: with the global `Map` held to 1,000 entries, an argument of 2,000 objects was copied as `{}`, frozen, and the kit answered all 7 failures.
+2. The kit's copy of a failure's argument or `got` keys a `Map`, which V8 holds to 2^24 entries, so a value copying to more than 2^24 objects is not copied whole: the kit still answers every failure, frozen, but an array or object in that value, up to the whole value, may be copied as an empty object, where SG11 gives a deep copy of its plain data.\
+   Which parts are lost follows the walk's order and the engine's limit, so no shape of such a copy is promised: SG11 makes two kits agree on `args`, and a promised shape would tie every kit to both.\
+   This entry first said the kit throws, and after B1 that only the parts past the limit become empty objects; neither holds: with the global `Map` held to 1,000 entries an argument of 2,000 objects was copied as `{}`, and at the real limit the re-review saw `{ before, big, after }`, `big` of 2^24 objects, copied as `{}` whole, `before` and `after` with it.\
+   Revived when a consumer judges a shape over a case whose arguments or answers copy to more than 2^24 objects.
 3. The declaration reader reads each member's own properties into a `Map`, so a member of more than 2^24 own properties is refused `not-an-object` at its pointer, where SG1 gives one `unknown-property` each.
 
 **Mutants.**\
@@ -265,5 +268,6 @@ Shown over those two points by a probe outside the repository:
 | SG11 | an array's copy not entered in the copy's map, the verifier's v7, which survived at `cfa57f8` | 1, the kit's copies |
 | SG11 | an object's copy not entered in the copy's map | 1, the kit's copies |
 | SG11 | `x` and `y` copied through separate maps | 1, the kit's copies |
+| SG11 | a function coordinate kept by the copy, the re-review's c4, which survived at `281b846` until the copies test gained the case point `{ x: () => 0, y: 0 }` | 1, the kit's copies |
 
 **Released** only by this repository's CI on the tag `v0.1.2`, pushed once the move is verified.
