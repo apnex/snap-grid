@@ -165,7 +165,7 @@ The calls are `D4`'s, each now from the component that holds it, and the runner 
 `inView` freezes each value it makes as it makes it, tracking none, so it lists any count SG6's `max` allows, where `0.1.1`'s deep freeze, tracking every object it froze in one `Set`, which V8 holds to 2^24 entries, stopped at 5,592,404 positions, three objects each and two more; a new invariant, I12, lists 2^24 positions in one answer.\
 The same freeze bounded two more answers the contract promises at any length -- a refusal's problem list, `openGrid` never throwing (I9), and the kit's failure list, the kit throwing only for a malformed shape or case (SG11) -- and each is frozen as it is made too.\
 No rule changes; the build now keeps them.\
-The behaviour changes: an `inView` answer of more than 5,592,404 positions, a refusal of more than 16,777,214 problems and a failure list of more than 2^24 objects answer where each threw `RangeError: Set maximum size exceeded`; and, after the verifier's B1, a failure's copy of a case point whose `x` or `y` is not a number holds a copy of that coordinate's plain data, where `0.1.1` held the caller's own value and froze it; nothing else.
+The behaviour changes: an `inView` answer of more than 5,592,404 positions, a refusal of more than 16,777,214 problems and a failure list of more than 2^24 objects answer where each threw `RangeError: Set maximum size exceeded`; and, after the verifier's B1, a failure's copy of a case point whose `x` or `y` is not a number holds a copy of that coordinate's plain data, where `0.1.1` held the caller's own value and froze it; and, after the re-review's B3, a failure whose argument or answer holds more than 2^24 arrays and objects answers, that value not copied whole, where `0.1.1` threw; nothing else.
 
 **Measured.**\
 The drafter's `grid-listing.mjs`, run as its usage says (`--expose-gc --max-old-space-size=8192`), against `0.1.1` -- draw's installed `0.1.0`, the same bytes -- and against this build, its import of `snap-grid` alone pointed at the build:
@@ -213,10 +213,10 @@ Every run of `npm test` holds the same property at a small size: with the global
 **Found, and not fixed.**\
 Each gives less than the contract promises, but none is the freeze, none can be fixed by freezing as made, and the move names none; each needs a walk that tracks what it has seen without one `Set` or `Map`, a change of the kit's or the reader's design, and so the director's to rule, its revival trigger a consumer asking past it:
 1. The kit's walk over a shape's answer, behind its checks for `-0` and for being frozen (I7 and `open`), tracks what it has seen in one `Set`, which cycles in a shape's answer need; judging `square` over a view pair whose answer passes 5,592,404 positions records a false I7 failure, `{ thrown: 'Set maximum size exceeded' }`, where under `0.1.1` that pair failed I4 and I7 because `inView` threw.
-2. The kit's copy of a failure's argument or `got` keys a `Map`, which V8 holds to 2^24 entries, so a value copying to more than 2^24 objects is not copied whole: the kit still answers every failure, frozen, but an array or object in that value, up to the whole value, may be copied as an empty object, where SG11 gives a deep copy of its plain data.\
-   Which parts are lost follows the walk's order and the engine's limit, so no shape of such a copy is promised: SG11 makes two kits agree on `args`, and a promised shape would tie every kit to both.\
-   This entry first said the kit throws, and after B1 that only the parts past the limit become empty objects; neither holds: with the global `Map` held to 1,000 entries an argument of 2,000 objects was copied as `{}`, and at the real limit the re-review saw `{ before, big, after }`, `big` of 2^24 objects, copied as `{}` whole, `before` and `after` with it.\
-   Revived when a consumer judges a shape over a case whose arguments or answers copy to more than 2^24 objects.
+2. The kit's copy of a failure's argument or `got` tracks what it has copied in a `Map`, which V8 holds to 2^24 entries, so a value whose plain data holds more than 2^24 arrays and objects is not copied whole, where SG11 gives a deep copy of its plain data: the kit answers every failure, frozen, but an array or object met once the copy's map is full is copied as an empty object.\
+   Which parts follows the walk's order and the limit, so no shape of such a copy is promised: SG11 makes two kits agree on `args`, and a promised shape would tie every kit to both.\
+   This finding was worded wrong three times before B3's fix: first that the kit throws; after B1, that only the parts past the limit become empty objects; after B2, that the kit always answers, a value possibly copied as an empty object up to the whole of it -- a full map refused the empty copy's own entry, the error escaping to each copy above, so a value lost what came before the limit too, and a case point whose `x` filled the map made the kit throw at `y` (B3, below).\
+   Revived when a consumer judges a shape over a case whose arguments or answers hold more than 2^24 arrays and objects.
 3. The declaration reader reads each member's own properties into a `Map`, so a member of more than 2^24 own properties is refused `not-an-object` at its pointer, where SG1 gives one `unknown-property` each.
 
 **Mutants.**\
@@ -269,5 +269,17 @@ Shown over those two points by a probe outside the repository:
 | SG11 | an object's copy not entered in the copy's map | 1, the kit's copies |
 | SG11 | `x` and `y` copied through separate maps | 1, the kit's copies |
 | SG11 | a function coordinate kept by the copy, the re-review's c4, which survived at `281b846` until the copies test gained the case point `{ x: () => 0, y: 0 }` | 1, the kit's copies |
+
+**After the re-review's finding B3.**\
+The re-review found B2's wording still false in one case: a case point's `x` and `y` are copied through one map, so when `x` filled it, `y` was a new key, the catch's own `seen.set` was refused, and nothing above `copyPoint` caught it -- `checkGridShape` threw `RangeError: Map maximum size exceeded`, measured at the real limit with `{ x: <2^24 - 1 objects>, y: { m: 1 } }` on Node 22 and 24, where SG11 lets the kit throw only for a malformed shape or case; `0.1.1` threw too.\
+Of the verifier's two options, recording the throw or fixing the code, the director chose the fix, so the promise holds:
+- the catch's `seen.set` has its own `try`, and nothing else changed: a value met once the copy's map is full is not remembered and is copied as an empty object wherever it is met, the error no longer reaching the copy above, so the parts met before are kept and every failure is answered;
+- `test/support/set-cap.js` gains `withMapCap`, holding the global `Map` to a cap as `withSetCap` holds the `Set`, and three tests use it at 1,000 entries, each failing on `0d2e8a1`: a case point `{ x: 999 objects, y: { m: 1 } }`, its failures answered and frozen, `x` whole and `y` as `{}`; a case point `{ x: 2,000 objects, y: 0 }`, `x` still an array of every element, the first 999 kept; and a case position `{ before: 10 objects, big: 2,000 objects, after }`, `before` kept and `after` as `{}`;
+- the re-review's case at the real limit, `{ x: <2^24 - 1 objects>, y: { m: 1 } }`, on this build: every failure answered, frozen, `x` copied whole and `y` as `{}` -- 105.4 s at a peak of 6.97 GB on Node 22 and 82.2 s at 7.07 GB on Node 24, by a probe outside the repository on a heap of 12,288 MB;
+- `CONTRACT.md`'s sentence and finding 2 above say what now holds, and no shape of a shortened copy.
+
+| Rule | Mutant | Tests failing |
+|---|---|---|
+| SG11, B3 | the catch's `seen.set` without its own `try`, as at `0d2e8a1` | 3, the three tests of the copy's map full: the first throwing `Map maximum size exceeded`, the second finding `x` copied as `{}`, the third `before` dropped |
 
 **Released** only by this repository's CI on the tag `v0.1.2`, pushed once the move is verified.
