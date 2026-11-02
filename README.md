@@ -120,7 +120,7 @@ A coordinate that is a number but not finite, or beyond 2^50, is well formed: `n
 
 ## Test
 
-The gate builds, runs every test, then a listing of 2^24 positions in one answer in a step of its own -- about 3 GB and 8 to 15 seconds, so `npm test` leaves it out -- then the vocabulary, runtime, clock and chance, and export-map checks, and mission-kit's style checks over the Markdown.\
+The gate builds, runs every test, then a listing of 2^24 positions in one answer in a step of its own, on a heap of 4,096 MB -- about 3 GB and 8 to 15 seconds, so `npm test` leaves it out -- then the vocabulary, runtime, clock and chance, and export-map checks, and mission-kit's style checks over the Markdown.\
 The tests, and the consumer test, run under `clean-runner`'s runner, a development dependency pinned to its release file, which fails a run that leaves a file, a folder or a process behind.
 
 Run the gate with a mission-kit checkout beside this repository, or with `MISSION_KIT` naming one:

@@ -33,7 +33,7 @@
     "build": "node tools/clean-dist.mjs && tsc -p .",
     "prepack": "npm run build",
     "test": "npm run build && clean-runner run \"test/**/*.test.js\"",
-    "gate": "npm test && clean-runner run \"test/large/*.large.js\" && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
+    "gate": "npm test && NODE_OPTIONS=--max-old-space-size=4096 clean-runner run \"test/large/*.large.js\" && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs",
     "consumer": "clean-runner exec node tools/consumer-test.mjs"
   },
   "devDependencies": {

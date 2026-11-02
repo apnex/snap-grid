@@ -375,7 +375,7 @@ test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh --
 	}
 });
 
-test("I11, I12: the gate runs the tests, then I12's large test in a step of its own, then every check, the clock and chance check among them, before the style checks", () => {
+test("I11, I12: the gate runs the tests, then I12's large test in a step of its own on a heap of 4,096 MB, then every check, the clock and chance check among them, before the style checks", () => {
 	const gate = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts.gate;
-	assert.equal(gate, "npm test && clean-runner run \"test/large/*.large.js\" && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs");
+	assert.equal(gate, "npm test && NODE_OPTIONS=--max-old-space-size=4096 clean-runner run \"test/large/*.large.js\" && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs");
 });
