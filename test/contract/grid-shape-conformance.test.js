@@ -7,6 +7,7 @@ import { openGrid, square } from "@apnex/snap-grid";
 import { checkGridShape } from "@apnex/snap-grid/conformance";
 import { isFrozenToDepth } from "../support/answers.js";
 import { ringTest } from "../fixtures/ring-test.js";
+import { withSetCap } from "../support/set-cap.js";
 
 const rect = (x, y, w, h) => ({ kind: "rect", x, y, w, h });
 
@@ -323,4 +324,50 @@ test("SG11: checkGridShape refuses a malformed shape or case with a TypeError na
 		assert.throws(() => checkGridShape(shape, cases), (e) => e instanceof TypeError && e.message.startsWith("checkGridShape"));
 	}
 	assert.deepEqual(checkGridShape(square, []), []);
+});
+
+test("SG11: the failure list is not bounded by a Set -- with the global Set holding at most 1,000 entries, as V8's holds 2^24, a shape failing I6 and I7 at each of 200 positions gets all 600 failures, over 2,000 objects, frozen to their depth", () => {
+	const shared = new Error("refused");
+	const thrower = () => {
+		throw shared;
+	};
+	const broken = Object.freeze({
+		name: "broken",
+		open: (declaration) => {
+			const opened = square.open(declaration);
+			const methods = { opposite: thrower, offers: thrower, nearest: thrower, pointOf: thrower, positionAt: thrower, inView: thrower, next: thrower, span: thrower, regionContains: thrower, enclosing: thrower };
+			return Object.freeze({ ok: true, grid: Object.freeze({ declaration: opened.grid.declaration, directions: Object.freeze([]), ...methods }) });
+		},
+	});
+	const positions = Array.from({ length: 200 }, (_, i) => ({ col: i, row: 0 }));
+	const c = { name: "broken", declaration: { shape: "square", pitch: 1, origin: { x: 0, y: 0 } }, points: [], positions, views: [], blocks: [], rects: [] };
+	const failures = withSetCap(1000, () => checkGridShape(broken, [c]));
+	assert.equal(failures.length, 600);
+	assert.deepEqual(failures.filter((f) => f.invariant === "I6").length, 200);
+	assert.deepEqual(failures[599], { invariant: "I7", case: "broken", args: ["pointOf", { col: 199, row: 0 }], got: { thrown: "refused" } });
+	assert.ok(isFrozenToDepth(failures));
+});
+
+test("SG11: a failure's args are frozen to their depth however an argument copies -- an array, an object no reflection can read, and a copy begun before a read that threw, held by a cycle beneath it", () => {
+	// P's descriptor of b answers Object.keys and throws when the copy reads it, after a, whose X points back at P
+	let readsOfB = 0;
+	const X = {};
+	const P = new Proxy({ a: X, b: 1 }, {
+		getOwnPropertyDescriptor(target, key) {
+			if (key === "b" && ++readsOfB % 2 === 0) throw new Error("b cannot be read twice");
+			return Reflect.getOwnPropertyDescriptor(target, key);
+		},
+	});
+	X.back = P;
+	const { proxy: revoked, revoke } = Proxy.revocable({ col: 0, row: 0 }, {});
+	revoke();
+	const c = { name: "odd", declaration: { shape: "square", pitch: 1, origin: { x: 0, y: 0 } }, points: [], positions: [[P, X], revoked], views: [], blocks: [], rects: [] };
+	const failures = checkGridShape(square, [c]);
+	assert.deepEqual(failures.map((f) => [f.invariant, f.args.length]), [["I6", 1], ["I6", 1], ...[0, 1].flatMap(() => ["offers", "pointOf", "-x", "+x", "-y", "+y"].map((call) => ["I7", call.length === 2 ? 3 : 2]))]);
+	const [copied] = failures[0].args;
+	assert.ok(Array.isArray(copied) && copied.length === 2);
+	assert.deepEqual(copied[0], {}, "P could not be copied whole, so its copy is an empty object");
+	assert.equal(copied[1].back.a, copied[1], "X's copy points back at the copy of P begun before b threw, which points at X's copy");
+	assert.deepEqual(failures[1].args, [{}], "the revoked Proxy copied as an empty object");
+	assert.ok(isFrozenToDepth(failures));
 });

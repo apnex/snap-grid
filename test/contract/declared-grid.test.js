@@ -7,6 +7,7 @@ import { openGrid, square } from "@apnex/snap-grid";
 import { isFrozenToDepth, holdsNegativeZero } from "../support/answers.js";
 import { seededRandom, randomTools } from "../support/doubles.js";
 import { ringTest } from "../fixtures/ring-test.js";
+import { withSetCap } from "../support/set-cap.js";
 
 const L = 2 ** 50;
 const base = () => ({ shape: "square", pitch: 60, origin: { x: 0, y: 0 } });
@@ -223,4 +224,18 @@ test("SG1: square opens its own declarations directly, and refuses another shape
 	assert.ok(Object.isFrozen(square));
 	assert.deepEqual(Object.keys(square).sort(), ["name", "open"]);
 	assert.equal(square.name, "square");
+});
+
+test("SG1, I9: a refusal is not bounded by a Set -- with the global Set holding at most 1,000 entries, as V8's holds 2^24, a declaration of 1,200 unknown properties spread over its root and origin is refused with every problem, frozen to its depth", () => {
+	const declaration = base();
+	for (let i = 0; i < 600; i++) {
+		declaration[`r${i}`] = i;
+		declaration.origin[`o${i}`] = i;
+	}
+	const refused = withSetCap(1000, () => openGrid(declaration));
+	assert.equal(refused.ok, false);
+	assert.equal(refused.problems.length, 1200);
+	assert.deepEqual(refused.problems[0], { pointer: "/origin/o0", problem: "unknown-property" });
+	assert.deepEqual(refused.problems[1199], { pointer: "/r99", problem: "unknown-property" });
+	assert.ok(isFrozenToDepth(refused));
 });

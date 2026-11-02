@@ -1,7 +1,7 @@
 /**
  * The problem records of a refused declaration (CONTRACT.md, SG1): RFC 6901 pointers, and one order.
  */
-import { deepFreeze, ownStringProperties, type OwnProperty } from "./plain-data.js";
+import { ownStringProperties, type OwnProperty } from "./plain-data.js";
 import type { DeclarationProblem, DeclarationProblemCode, OpenGridResult } from "./types.js";
 
 /** A pointer to a member of the value a pointer names: "~" written "~0" and "/" written "~1". */
@@ -26,16 +26,16 @@ export class ProblemList {
 		return this.#items.some((p) => p.pointer === pointer || p.pointer.startsWith(`${pointer}/`));
 	}
 
-	/** The refusal: a fresh, frozen, ordered list of fresh records. */
+	/** The refusal: a fresh, frozen, ordered list of fresh records, each frozen as it is made, tracking none. */
 	refusal(): OpenGridResult<never> {
 		const ordered = [...this.#items].sort((a, b) => (a.pointer < b.pointer ? -1 : a.pointer > b.pointer ? 1 : a.problem < b.problem ? -1 : a.problem > b.problem ? 1 : 0));
 		const problems: DeclarationProblem[] = [];
 		for (const p of ordered) {
 			const last = problems[problems.length - 1];
 			if (last !== undefined && last.pointer === p.pointer && last.problem === p.problem) continue;
-			problems.push({ pointer: p.pointer, problem: p.problem });
+			problems.push(Object.freeze({ pointer: p.pointer, problem: p.problem }));
 		}
-		return deepFreeze({ ok: false, problems });
+		return Object.freeze({ ok: false, problems: Object.freeze(problems) });
 	}
 }
 

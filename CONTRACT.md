@@ -11,7 +11,7 @@ related: [C0, A3]
 
 # snap-grid
 
-The contract of record for snap-grid `0.1.1`, each rule stated on its own terms; what was settled at each build is in `docs/DECISIONS.md` (`D2` for `0.1.0`, `D3` for `0.1.1`, whose built files are `0.1.0`'s).\
+The contract of record for snap-grid `0.1.2`, each rule stated on its own terms; what was settled at each build is in `docs/DECISIONS.md` (`D2` for `0.1.0`, `D3` for `0.1.1`, whose built files are `0.1.0`'s, and `D6` for `0.1.2`, whose build keeps this contract where `0.1.1`'s stopped short of it).\
 It also carries the fields of a mission-kit registry entry, and that entry is generated from this file when the component is filed, never written as a second copy.\
 The registry id is unminted on purpose; one is minted only when the entry is admitted to the registry.
 
@@ -84,7 +84,8 @@ A point with a coordinate that is a number but not finite, or outside the shape'
 That guarantee, and that what it returns is fresh and frozen, hold for `square` and for an added shape that keeps SG11, which the kit checks (SG11, `open`); `openGrid` hands a declaration to the shape it names and returns its answer as it is, never wrapping an added shape.
 
 **What is returned.**\
-Every value snap-grid returns -- a grid, an open result, a problem list, a position, a point, a region, an `inView` answer, a span, a block, a failure list -- is made afresh by the call and frozen to its depth; nothing a caller passes is frozen, kept or changed.
+Every value snap-grid returns -- a grid, an open result, a problem list, a position, a point, a region, an `inView` answer, a span, a block, a failure list -- is made afresh by the call and frozen to its depth; nothing a caller passes is frozen, kept or changed.\
+How a value is frozen bounds no answer: an `inView` answer, a problem list and a failure list are as long as their arguments make them, up to what memory holds (I12).
 
 **SG1 -- A declaration, opened or refused.**\
 `openGrid(declaration, options?)` returns `{ ok: true, grid }` or `{ ok: false, problems }`.\
@@ -250,6 +251,7 @@ Each invariant holds for every grid of every shape.\
 | I9 | `openGrid` never throws for any JSON value, and answers every declaration with exactly the problems SG1 gives, from a table of cases, escaped pointers and code-unit order among them. | snap-grid |
 | I10 | `square` reproduces the grid arithmetic its corpus was made from: the corpus's points, positions and answers, over coordinates in the domain and stated as square-grid cases, pass with `-0` told apart from `0` -- except at the points the corpus lists apart, each with the reference answer, the exact one, and every reason that applies: `rounding`, where the reference's binary64 arithmetic is not exact; `domain`, where the reference answer lies outside the 2^50 domain, so snap-grid clamps; and `beyond`, a rect wholly beyond one side of a bounded grid, where a reference that clamps the low edge only from below and the high edge only from above gives a block whose `from` passes its `to`, and SG9 gives the edge position there; a point with two causes carries both. The corpus's provenance -- what it was made from, and how -- is in `docs/DECISIONS.md` (D3) and `test/corpus/README.md`. | snap-grid |
 | I11 | The source names no consumer's vocabulary; the built files import no package and no runtime-specific module, name no global but the JavaScript built-ins the build uses and no route to `Function`, and read no clock, timer, source of chance or network. | gate |
+| I12 | `inView` lists 2^24 positions in one answer, at stride 1, the answer, its array and every entry, position and point frozen, in order (gate); and with the global `Set` held to 1,000 entries, as V8 holds it to 2^24, an `inView` answer, a problem list and a failure list each of more than 1,000 objects are given whole and frozen to their depth (snap-grid). | snap-grid, gate |
 
 The kit measures nearness in binary64 because it has no exact measure for an arbitrary shape.\
 A square grid's exact answer never loses that comparison: its distance on each axis is no greater than any other position's, and rounding never reverses an order, so its computed distance is never the greater.
@@ -261,8 +263,8 @@ A square grid's exact answer never loses that comparison: its distance on each a
 This repository, `apnex/snap-grid`, and its package `@apnex/snap-grid`, released only by its own CI as a tarball attached to a GitHub release, drafted, verified and then published (`.github/workflows/release.yml`).\
 The package exports `openGrid` and `square`, and `@apnex/snap-grid/conformance` exports `checkGridShape`, as `export-map.json` records.\
 The code is TypeScript in `src/`, built to `dist/`, which only a release holds.\
-The tests are in `test/`: one file per capability in `test/contract/`, the I10 corpus and its test in `test/corpus/`, and `ring-test` in `test/fixtures/`.\
-The gate, `npm run gate`, builds, runs the tests, the vocabulary, runtime, clock and chance, and export-map checks in `tools/`, and mission-kit's style checks.\
+The tests are in `test/`: one file per capability in `test/contract/`, the I10 corpus and its test in `test/corpus/`, `ring-test` in `test/fixtures/`, and I12's listing of 2^24 positions in `test/large/`, which `npm test` leaves out.\
+The gate, `npm run gate`, builds, runs the tests, then I12's large test in a step of its own, then the vocabulary, runtime, clock and chance, and export-map checks in `tools/`, and mission-kit's style checks.\
 The design of record and the rulings are kept in draw's records, `apnex/drawv2`.
 
 ---
