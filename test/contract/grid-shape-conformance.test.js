@@ -348,7 +348,7 @@ test("SG11: the failure list is not bounded by a Set -- with the global Set hold
 	assert.ok(isFrozenToDepth(failures));
 });
 
-test("SG11: a failure's args are frozen to their depth however an argument copies -- an array, an object no reflection can read, and a copy begun before a read that threw, held by a cycle beneath it", () => {
+test("SG11: a failure's args are frozen to their depth however an argument copies -- an array, an object no reflection can read, a copy begun before a read that threw, held by a cycle beneath it; a case point's coordinate that is an object, or a getter's new one, copied and never the caller's own; and arrays shared or cyclic, copied so", () => {
 	// P's descriptor of b answers Object.keys and throws when the copy reads it, after a, whose X points back at P
 	let readsOfB = 0;
 	const X = {};
@@ -370,4 +370,44 @@ test("SG11: a failure's args are frozen to their depth however an argument copie
 	assert.equal(copied[1].back.a, copied[1], "X's copy points back at the copy of P begun before b threw, which points at X's copy");
 	assert.deepEqual(failures[1].args, [{}], "the revoked Proxy copied as an empty object");
 	assert.ok(isFrozenToDepth(failures));
+
+	// a case point copies as { x, y }, each coordinate copied as any other argument is, a number as itself
+	const objectX = { k: [1] };
+	const made = [];
+	const getterX = {
+		get x() {
+			const fresh = { fresh: [2] };
+			made.push(fresh);
+			return fresh;
+		},
+		y: 0,
+	};
+	const both = { s: 3 };
+	const S = [1, 2];
+	const C = [];
+	C.push(C);
+	const odd = { name: "odd points", declaration: { shape: "square", pitch: 1, origin: { x: 0, y: 0 } }, points: [{ x: objectX, y: 0 }, getterX, { x: both, y: both }], positions: [{ shared: [S, S], cyclic: C }], views: [], blocks: [], rects: [] };
+	const second = checkGridShape(square, [odd]);
+	assert.deepEqual(second.map((f) => f.invariant), ["I2", "I2", "I2", "I3", "I3", "I3", "I6", ...Array(12).fill("I7")]);
+	assert.ok(isFrozenToDepth(second), "every failure frozen to its depth, the coordinates' copies among it");
+	const held = new Set();
+	const walk = (v) => {
+		if ((typeof v !== "object" || v === null) || held.has(v)) return;
+		held.add(v);
+		for (const k of Reflect.ownKeys(v)) walk(Object.getOwnPropertyDescriptor(v, k).value);
+	};
+	walk(second);
+	assert.deepEqual(second[0].args, [{ x: { k: [1] }, y: 0 }]);
+	assert.ok(!held.has(objectX) && !held.has(objectX.k), "the caller's coordinate is copied, never kept");
+	assert.ok(!Object.isFrozen(objectX) && !Object.isFrozen(objectX.k), "nor frozen");
+	assert.deepEqual(second[1].args, [{ x: { fresh: [2] }, y: 0 }]);
+	assert.ok(made.length > 0 && made.every((o) => !held.has(o) && !Object.isFrozen(o)), "a getter's new object copied, never kept nor frozen");
+	const [twice] = second[2].args;
+	assert.equal(twice.x, twice.y, "a coordinate object shared by x and y copied once");
+	assert.deepEqual(twice.x, { s: 3 });
+	const [position] = second[6].args;
+	assert.equal(position.shared[0], position.shared[1], "an array shared within an argument copied once");
+	assert.deepEqual(position.shared[0], [1, 2]);
+	assert.equal(position.cyclic[0], position.cyclic, "a cyclic array copied as a cycle");
+	assert.ok(!held.has(S) && !held.has(C) && !Object.isFrozen(S) && !Object.isFrozen(C), "the caller's arrays copied, never kept nor frozen");
 });

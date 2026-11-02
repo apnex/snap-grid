@@ -155,7 +155,10 @@ const isStride = (s: unknown): boolean => {
 	return t === 1;
 };
 
-/** A point as a failure's args hold it: { x, y } alone, each read once, a read that throws giving undefined. */
+/**
+ * A point as a failure's args hold it: { x, y } alone, each read once, a read that throws giving undefined, and
+ * each copied as any other argument is (copyPlain), so a number is itself and nothing of the caller's is kept.
+ */
 function copyPoint(point: unknown): unknown {
 	if ((typeof point !== "object" || point === null) && typeof point !== "function") return point;
 	const read = (name: "x" | "y"): unknown => {
@@ -165,7 +168,10 @@ function copyPoint(point: unknown): unknown {
 			return undefined;
 		}
 	};
-	return Object.freeze({ x: read("x"), y: read("y") });
+	const x = read("x");
+	const y = read("y");
+	const seen = new Map<object, unknown>();
+	return Object.freeze({ x: copyPlain(x, seen), y: copyPlain(y, seen) });
 }
 
 /**
