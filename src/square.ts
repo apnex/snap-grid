@@ -135,18 +135,19 @@ function makeSquareGrid(declaration: SquareDeclaration): SquareGrid {
 			let stride = 1;
 			while (stride < STRIDE_LIMIT && !(pitch * v.scale * stride >= minSpacing)) stride *= 2;
 			while (stride < STRIDE_LIMIT && countAt(cols, stride) * countAt(rows, stride) > max) stride *= 2;
+			// each value frozen as it is made, tracking none, so the answer is as long as SG6's max allows
 			const positions: InViewEntry<SquarePosition>[] = [];
 			if (cols !== null && rows !== null && countAt(cols, stride) * countAt(rows, stride) > 0) {
 				const firstCol = Math.ceil(cols[0] / stride) * stride;
 				const firstRow = Math.ceil(rows[0] / stride) * stride;
 				for (let row = firstRow; row <= rows[1]; row += stride) {
 					for (let col = firstCol; col <= cols[1]; col += stride) {
-						const position = { col: col + 0, row: row + 0 };
-						positions.push({ position, point: pointAt(position) });
+						const position = Object.freeze({ col: col + 0, row: row + 0 });
+						positions.push(Object.freeze({ position, point: Object.freeze(pointAt(position)) }));
 					}
 				}
 			}
-			return deepFreeze({ stride, positions });
+			return Object.freeze({ stride, positions: Object.freeze(positions) });
 		},
 
 		next(position: SquarePosition, direction: string): SquarePosition | null {

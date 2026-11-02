@@ -262,9 +262,11 @@ test("D3: the built files of two tarballs compare byte for byte -- the same file
 	}
 });
 
-test("D3, RD12: this release repeats 0.1.0's built files, as tools/repeated-build.json records, and the release workflow runs tools/check-repeated-build.mjs on the packed file after the pack and before the consumer test and the draft", () => {
+test("D3, D6, RD12: 0.1.1 repeats 0.1.0's built files, as tools/repeated-build.json records, and this release, 0.1.2, changing them, repeats none; the release workflow runs tools/check-repeated-build.mjs on the packed file after the pack and before the consumer test and the draft", () => {
 	const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-	assert.equal(repeatedBuild(pkg.version), "0.1.0");
+	assert.equal(repeatedBuild("0.1.1"), "0.1.0");
+	assert.equal(pkg.version, "0.1.2");
+	assert.equal(repeatedBuild(pkg.version), null, "0.1.2 changes inView's built file, so the release step skips it");
 	assert.equal(repeatedBuild("0.2.0"), null, "a release not named repeats nothing");
 	const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
 	const call = 'run: node tools/check-repeated-build.mjs "$RUNNER_TEMP/packed/$FILE" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/repeated"';
@@ -314,7 +316,7 @@ for (let i = 0; i < args.length; i++) {
 /** The SHA-512 line sha512sum writes for a file. */
 const sha512Line = (file, name = path.basename(file)) => `${crypto.createHash("sha512").update(fs.readFileSync(file)).digest("hex")}  ${name}\n`;
 
-test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh -- a pass, a one-byte difference, a SHA-512 mismatch, a SHA-512 file naming another file, a missing asset, and a version the map does not name, which skips and asks nothing of gh", () => {
+test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh -- a pass, a one-byte difference, a SHA-512 mismatch, a SHA-512 file naming another file, a missing asset, and a version the map does not name -- 0.2.0, and package.json's own, 0.1.2 -- which skips and asks nothing of gh", () => {
 	const dir = scratchFolder("snap-grid-repeated-");
 	try {
 		const gh = standInGh(dir);
@@ -325,35 +327,35 @@ test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh --
 		const same = tarball(dir, "same", { ...built, "package.json": "{\"version\":\"0.1.1\"}", "README.md": "new" });
 		const byte = tarball(dir, "byte", { ...built, "dist/a.js": "export const a = 2;\n", "package.json": "{\"version\":\"0.1.1\"}" });
 
-		// a pass: the version is package.json's, 0.1.1, which repeats 0.1.0; gh is asked for that release's two files
-		const pass = gh.run(same);
+		// a pass: the version given, 0.1.1, repeats 0.1.0; gh is asked for that release's two files
+		const pass = gh.run(same, "--version", "0.1.1");
 		assert.equal(pass.status, 0, pass.out);
 		assert.match(pass.out, /check-repeated-build: PASS -- 3 built file\(s\) of same\.tgz are byte-identical to release v0\.1\.0's/);
 		assert.match(pass.out, /apnex-snap-grid-0\.1\.0\.tgz matches the SHA-512 attached beside it/);
 		assert.deepEqual(pass.calls, [["release", "download", "v0.1.0", "--repo", "apnex/snap-grid", "--dir", pass.into, "--pattern", "apnex-snap-grid-0.1.0.tgz", "--pattern", "apnex-snap-grid-0.1.0.tgz.sha512"]]);
 
 		// a one-byte difference in a built file fails, naming it
-		const differ = gh.run(byte);
+		const differ = gh.run(byte, "--version", "0.1.1");
 		assert.equal(differ.status, 1, differ.out);
 		assert.match(differ.out, /dist\/a\.js differs/);
 		assert.match(differ.out, /check-repeated-build: FAIL -- 1 difference\(s\) between the built files of byte\.tgz and of release v0\.1\.0/);
 
 		// a downloaded tarball that does not match its SHA-512 fails before anything is compared
 		fs.writeFileSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"), sha512Line(same, "apnex-snap-grid-0.1.0.tgz"));
-		const mismatch = gh.run(same);
+		const mismatch = gh.run(same, "--version", "0.1.1");
 		assert.equal(mismatch.status, 1, mismatch.out);
 		assert.match(mismatch.out, /check-repeated-build: FAIL -- apnex-snap-grid-0\.1\.0\.tgz does not match the SHA-512 attached beside it/);
 		assert.doesNotMatch(mismatch.out, /PASS|differs/);
 
 		// a SHA-512 file whose digest is right but names another file fails too
 		fs.writeFileSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"), sha512Line(base, "other.tgz"));
-		const named = gh.run(same);
+		const named = gh.run(same, "--version", "0.1.1");
 		assert.equal(named.status, 1, named.out);
 		assert.match(named.out, /names other\.tgz, not apnex-snap-grid-0\.1\.0\.tgz/);
 
 		// an asset gh cannot find fails
 		fs.rmSync(path.join(gh.assets, "apnex-snap-grid-0.1.0.tgz.sha512"));
-		const missing = gh.run(same);
+		const missing = gh.run(same, "--version", "0.1.1");
 		assert.equal(missing.status, 1, missing.out);
 		assert.match(missing.out, /gh could not download apnex-snap-grid-0\.1\.0\.tgz and its SHA-512 from release v0\.1\.0 of apnex\/snap-grid/);
 
@@ -362,12 +364,18 @@ test("D3, RD12: tools/check-repeated-build.mjs, end to end with a stand-in gh --
 		assert.equal(skip.status, 0, skip.out);
 		assert.match(skip.out, /check-repeated-build: SKIP -- 0\.2\.0 names no release whose built files it repeats/);
 		assert.deepEqual(skip.calls, []);
+
+		// with no version given it is package.json's, 0.1.2, which the map does not name: a v0.1.2 release run skips the step
+		const own = gh.run(byte);
+		assert.equal(own.status, 0, own.out);
+		assert.match(own.out, /check-repeated-build: SKIP -- 0\.1\.2 names no release whose built files it repeats/);
+		assert.deepEqual(own.calls, []);
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
 
-test("I11: the gate runs every check, the clock and chance check among them, after the tests and before the style checks", () => {
+test("I11, I12: the gate runs the tests, then I12's large test in a step of its own, then every check, the clock and chance check among them, before the style checks", () => {
 	const gate = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts.gate;
-	assert.equal(gate, "npm test && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs");
+	assert.equal(gate, "npm test && clean-runner run \"test/large/*.large.js\" && node tools/check-vocabulary.mjs && node tools/check-runtime.mjs && node tools/check-clock-and-chance.mjs && node tools/check-export-map.mjs && node tools/check-style.mjs");
 });

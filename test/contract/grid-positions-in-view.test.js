@@ -7,6 +7,7 @@ import { openGrid } from "@apnex/snap-grid";
 import { holdsNegativeZero, isFrozenToDepth } from "../support/answers.js";
 import { aimedCoordinate, randomDeclaration, randomTools, seededRandom } from "../support/doubles.js";
 import { exactViewRange } from "../support/oracle.js";
+import { withSetCap } from "../support/set-cap.js";
 
 const L = 2 ** 50;
 const TOP = 2 ** 52;
@@ -200,4 +201,14 @@ test("SG6: the answer is frozen to its depth, fresh each call, and the view is n
 	assert.ok(!Object.isFrozen(v) && !Object.isFrozen(v.region) && !Object.isFrozen(options));
 	assert.deepEqual(Object.keys(a), ["stride", "positions"]);
 	assert.deepEqual(Object.keys(a.positions[0]), ["position", "point"]);
+});
+
+test("SG6, I12: the answer is not bounded by a Set -- with the global Set holding at most 1,000 entries, as V8's holds 2^24, an answer of 400 positions, 1,202 objects, is given whole and frozen to its depth", () => {
+	const g = open({ shape: "square", pitch: 60, origin: { x: 30, y: -30 } });
+	const answer = withSetCap(1000, () => g.inView(view(30, -30, 19 * 60, 19 * 60), { max: 400 }));
+	assert.equal(answer.stride, 1);
+	assert.equal(answer.positions.length, 400);
+	assert.deepEqual(answer.positions[399], { position: { col: 19, row: 19 }, point: { x: 1170, y: 1110 } });
+	assert.ok(isFrozenToDepth(answer));
+	assert.throws(() => withSetCap(1000, () => { const s = new Set(); for (let i = 0; i <= 1000; i++) s.add(i); }), RangeError, "control: the stand-in refuses its 1,001st entry");
 });
