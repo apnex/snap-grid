@@ -20,3 +20,24 @@ export function withSetCap(cap, call) {
 		globalThis.Set = RealSet;
 	}
 }
+
+/**
+ * Runs `call` with the global Map refusing more than `cap` entries per instance, as V8 refuses the 2^24-and-first
+ * ("Map maximum size exceeded"); the real Map is back after. The kit's copy of a failure's values tracks them in a
+ * Map, so this stands in for a value of more than 2^24 arrays and objects at a small size.
+ */
+export function withMapCap(cap, call) {
+	const RealMap = globalThis.Map;
+	class CappedMap extends RealMap {
+		set(key, value) {
+			if (this.size >= cap && !this.has(key)) throw new RangeError("Map maximum size exceeded");
+			return super.set(key, value);
+		}
+	}
+	globalThis.Map = CappedMap;
+	try {
+		return call();
+	} finally {
+		globalThis.Map = RealMap;
+	}
+}

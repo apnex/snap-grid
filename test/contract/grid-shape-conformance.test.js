@@ -7,7 +7,7 @@ import { openGrid, square } from "@apnex/snap-grid";
 import { checkGridShape } from "@apnex/snap-grid/conformance";
 import { isFrozenToDepth } from "../support/answers.js";
 import { ringTest } from "../fixtures/ring-test.js";
-import { withSetCap } from "../support/set-cap.js";
+import { withMapCap, withSetCap } from "../support/set-cap.js";
 
 const rect = (x, y, w, h) => ({ kind: "rect", x, y, w, h });
 
@@ -413,4 +413,37 @@ test("SG11: a failure's args are frozen to their depth however an argument copie
 	assert.deepEqual(position.shared[0], [1, 2]);
 	assert.equal(position.cyclic[0], position.cyclic, "a cyclic array copied as a cycle");
 	assert.ok(!held.has(S) && !held.has(C) && !Object.isFrozen(S) && !Object.isFrozen(C), "the caller's arrays copied, never kept nor frozen");
+});
+
+const capObjects = (n) => Array.from({ length: n }, (_, i) => ({ i }));
+const capDeclaration = { shape: "square", pitch: 1, origin: { x: 0, y: 0 } };
+
+test("SG11: the copy's map full, the kit still answers -- with the global Map holding at most 1,000 entries, as V8's holds 2^24, a case point whose x and its 999 objects fill it, so y is met once it is full: every failure answered, frozen to its depth, x copied whole and y as an empty object", () => {
+	const c = { name: "x fills the map", declaration: capDeclaration, points: [{ x: capObjects(999), y: { m: 1 } }], positions: [], views: [], blocks: [], rects: [] };
+	const failures = withMapCap(1000, () => checkGridShape(square, [c]));
+	assert.deepEqual(failures.map((f) => f.invariant), ["I2", "I3", "I7", "I7"]);
+	assert.ok(isFrozenToDepth(failures));
+	assert.equal(failures[0].args[0].x.length, 999, "x, met before the map was full, copied whole");
+	assert.deepEqual(failures[0].args[0].y, {}, "y, met once it was full, copied as an empty object");
+});
+
+test("SG11: the copy's map full within an array -- with the global Map holding at most 1,000 entries, a case point whose x holds 2,000 objects and whose y is 0: every failure answered, frozen, x still an array of every element, those met before the map was full kept and those after as empty objects", () => {
+	const c = { name: "x past the map", declaration: capDeclaration, points: [{ x: capObjects(2000), y: 0 }], positions: [], views: [], blocks: [], rects: [] };
+	const failures = withMapCap(1000, () => checkGridShape(square, [c]));
+	assert.equal(failures.length, 4);
+	assert.ok(isFrozenToDepth(failures));
+	const { x, y } = failures[0].args[0];
+	assert.ok(Array.isArray(x) && x.length === 2000, "x still an array, of every element");
+	assert.deepEqual([x[0], x[998], x[999], x[1999], y], [{ i: 0 }, { i: 998 }, {}, {}, 0]);
+});
+
+test("SG11: the copy's map full in the middle of an argument -- with the global Map holding at most 1,000 entries, a case position { before: 10 objects, big: 2,000 objects, after }: every failure answered, frozen, before kept, after copied as an empty object", () => {
+	const c = { name: "big in the middle", declaration: capDeclaration, points: [], positions: [{ before: capObjects(10), big: capObjects(2000), after: { deep: { m: 1 } } }], views: [], blocks: [], rects: [] };
+	const failures = withMapCap(1000, () => checkGridShape(square, [c]));
+	assert.deepEqual(failures.map((f) => f.invariant), ["I6", ...Array(6).fill("I7")]);
+	assert.ok(isFrozenToDepth(failures));
+	const [copied] = failures[0].args;
+	assert.deepEqual(copied.before, capObjects(10), "before, met first, kept");
+	assert.ok(Array.isArray(copied.big) && copied.big.length === 2000);
+	assert.deepEqual(copied.after, {}, "after, met once the map was full, copied as an empty object");
 });

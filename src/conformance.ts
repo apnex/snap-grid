@@ -208,7 +208,12 @@ function copyPlain(value: unknown, seen = new Map<object, unknown>()): unknown {
 		// a copy begun before the read that threw may be held by a cycle beneath it: frozen as it stands
 		if (partial !== null) Object.freeze(partial);
 		const out = Object.freeze({});
-		seen.set(value, out);
+		try {
+			seen.set(value, out);
+		} catch {
+			// the copy's map is full, as V8 holds a Map to 2^24 entries: this value is not remembered, and is copied
+			// as an empty object wherever it is met, so the kit still answers every failure
+		}
 		return out;
 	}
 }
