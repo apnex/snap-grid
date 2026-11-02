@@ -152,3 +152,96 @@ The runner is not given `--test-force-exit`, which `test-harness`'s README recom
 **Ruling.**\
 The development dependency `D4` names is replaced by two, each pinned to its release file by its URL and, in the lockfile, by its hash: `@apnex/clean-runner` `0.2.0`, for the runner -- `clean-runner run` and `clean-runner exec`, and `scratchFolder` -- and `@apnex/headless-chromium` `0.1.0`, for `dumpDom` and `serveStatic`; `files` is unchanged, so neither is packed.\
 The calls are `D4`'s, each now from the component that holds it, and the runner is still given no `--test-force-exit`.
+
+---
+
+## D6 - 0.1.2: the build keeps its contract, each answer frozen as it is made
+
+**Ruled by:** the director, 2026-11-01 (draw's `H26-23`: its design of record for pan and zoom ratified as it stands); for the problem list and the failure list, the director's instruction for this move, that an answer the same freeze bounds below what the contract promises is fixed the same way.\
+**Affects:** `src/square.ts`, `src/declaration-problems.ts`, `src/conformance.ts`, `CONTRACT.md`, `README.md`, `test/`, and `package.json` and its lockfile; a patch release, `0.1.2`.
+
+**Ruling.**\
+`0.1.2` is the `snap-grid` paragraph of section 3.2 of draw's `dev/design/components/PAN-ZOOM.md`, revision 10, with its decision PZ13, its section 5.1's move 4 and the row of its appendix A for that move.\
+`inView` freezes each value it makes as it makes it, tracking none, so it lists any count SG6's `max` allows, where `0.1.1`'s deep freeze, tracking every object it froze in one `Set`, which V8 holds to 2^24 entries, stopped at 5,592,404 positions, three objects each and two more; a new invariant, I12, lists 2^24 positions in one answer.\
+The same freeze bounded two more answers the contract promises at any length -- a refusal's problem list, `openGrid` never throwing (I9), and the kit's failure list, the kit throwing only for a malformed shape or case (SG11) -- and each is frozen as it is made too.\
+No rule changes; the build now keeps them.\
+The behaviour changes: an `inView` answer of more than 5,592,404 positions, a refusal of more than 16,777,214 problems and a failure list of more than 2^24 objects answer where each threw `RangeError: Set maximum size exceeded`; nothing else.
+
+**Measured.**\
+The drafter's `grid-listing.mjs`, run as its usage says (`--expose-gc --max-old-space-size=8192`), against `0.1.1` -- draw's installed `0.1.0`, the same bytes -- and against this build, its import of `snap-grid` alone pointed at the build:
+
+| | Node 22, `0.1.1` | Node 22, `0.1.2` | Node 24, `0.1.1` | Node 24, `0.1.2` |
+|---|---|---|---|---|
+| one past the ceiling, 5,592,405 | throws after 17.0 s | 0.81 s | throws after 20.6 s | 1.09 s |
+| at the ceiling, 5,592,404 | 17.8 s | 0.97 s | 18.9 s | 0.97 s |
+| a million | 2.1 s | 0.20 s | 2.6 s | 0.21 s |
+| heap held | 155 MB a million, 861 MB at the ceiling | the same | the same | the same |
+
+The kit, over a shape whose every call throws and a case of 1,500,000 positions, 4,500,000 failures: `0.1.1`'s code threw after 23.5 s at a peak of 2.8 GB; this build answers in 12.3 s at 1.7 GB (Node 22).\
+A refusal of more than 16,777,214 problems was not built: it needs a declaration of as many own properties over its members, several gigabytes and minutes; the test at a small size holds it.
+
+**Where I12 runs, and why.**\
+One answer of 2^24 positions, listed on the default heap, each entry checked frozen and in order:
+
+| | List | Check | Wall | Peak RSS |
+|---|---|---|---|---|
+| Node 22, alone | 10.0 s | 1.5 s | 11.7 s | 2.96 GB |
+| Node 24, alone | 6.1 s | 1.5 s | 7.8 s | 2.92 GB |
+| Node 22, the gate's step under `clean-runner` | | | 15.1 s | 3.05 GB |
+| Node 24, the gate's step under `clean-runner` | | | 12.8 s | 2.91 GB |
+
+`npm test` runs its 200 tests in 7 to 8 seconds; a test of 3 GB beside them would more than double that and hold more memory than every other test together, and the default heap here, 4.1 GB on Node 22 and 4.3 GB on Node 24, holds it with about 1 GB to spare, less on a machine with less memory.\
+The whole gate, the step included, took 24.3 s at a peak of 3.04 GB on Node 22 and 22.3 s at 2.91 GB on Node 24.\
+So I12's 2^24 is a file of its own, `test/large/in-view-2-24.large.js`, named so `npm test`'s glob leaves it out, and the gate runs it in a step of its own after the tests, never beside them, on the default heap; the gate workflow runs the gate on Node 22 and 24, and the release workflow runs it before it packs.\
+Every run of `npm test` holds the same property at a small size: with the global `Set` held to 1,000 entries (`test/support/set-cap.js`), as V8 holds it to 2^24, an `inView` answer, a problem list and a failure list each of more than 1,000 objects are given whole and frozen, so each of the three frozen through a `Set` again fails in milliseconds (mutants M1, M7 and M10).
+
+**Choices made at build.**
+- `inView` freezes each position, its point and its entry as it makes them, then the array, then the answer; its count, stride and order are unchanged.
+- A refusal freezes each problem record as it makes it, then the list, then the answer.
+- The kit freezes each copy in a failure once it is filled -- a point's, an array's, an object's, a thrown error's `{ thrown }`, an unreadable value's empty one -- and a copy begun before a read that threw, which a cycle beneath it may hold, as it stands; then each failure, its `args`, and the list.
+- `deepFreeze` stays for the answers whose size no argument sets: the grid and its declaration, the open result, `nearest`, `pointOf`, `positionAt`, `next`, `span`, `enclosing`, and `square`.
+- `CONTRACT.md` gains I12, held by snap-grid at the small size and by the gate at 2^24, and its "What is returned" paragraph a sentence: how a value is frozen bounds no answer.
+- `tools/repeated-build.json` still names `0.1.1` alone, so a release run of `0.1.2`, whose built files differ, skips the repeated-build step; the release and gate workflows are unchanged, and a `v0.1.2` tag builds with them as they are.
+- `README.md`'s Test names the gate's new step.
+
+**The `0.1.1` tests changed.**
+- `test/tools/gate-checks.test.js`, the repeated-build test: `0.1.1` repeats `0.1.0`, and `package.json`'s version, `0.1.2`, repeats none, where it asserted that `package.json`'s version repeats `0.1.0`; its name gains D6.
+- The same file's end-to-end test of `tools/check-repeated-build.mjs`: its five runs that pass or fail on `0.1.1` name `--version 0.1.1`, where they took `package.json`'s; it gains a run with no version, which skips `0.1.2`.
+- The same file's gate test: the gate script's exact text gains the step `clean-runner run "test/large/*.large.js"`; its name gains I12.
+- Four tests are added to the contract files, and the I10 corpus and every other test are unchanged.
+
+**Found, and not fixed.**\
+Each gives less than the contract promises, but none is the freeze, none can be fixed by freezing as made, and the move names none; each needs a walk that tracks what it has seen without one `Set` or `Map`, a change of the kit's or the reader's design, and so the director's to rule, its revival trigger a consumer asking past it:
+1. The kit's walk over a shape's answer, behind its checks for `-0` and for being frozen (I7 and `open`), tracks what it has seen in one `Set`, which cycles in a shape's answer need; judging `square` over a view pair whose answer passes 5,592,404 positions records a false I7 failure, `{ thrown: 'Set maximum size exceeded' }`, where under `0.1.1` that pair failed I4 and I7 because `inView` threw.
+2. The kit's copy of a failure's argument or `got` keys a `Map`, so one copied value of more than 2^24 objects makes the kit throw.
+3. The declaration reader reads each member's own properties into a `Map`, so a member of more than 2^24 own properties is refused `not-an-object` at its pointer, where SG1 gives one `unknown-property` each.
+
+**Mutants.**\
+Each made as exact text in a copy of the working tree -- two replacements where `deepFreeze` is imported again -- built and run against every test `npm test` runs, M1 also against I12's large test; all 22 were killed, M15, M18 and M19 only once the test of the kit's copies was added:
+
+| Rule | Mutant | Tests failing, one of them |
+|---|---|---|
+| I12, SG6 | `inView` frozen through `deepFreeze`'s `Set` again, as `0.1.1` | 1, the capped `Set`; and I12, "Too many properties to enumerate" after 18 s |
+| SG6 | an entry not frozen | 18, the answer frozen to its depth |
+| SG6 | an entry's position not frozen | 18, the answer frozen to its depth |
+| SG6 | an entry's point not frozen | 18, the answer frozen to its depth |
+| SG6 | the array not frozen | 18, the answer frozen to its depth |
+| SG6 | the answer not frozen | 18, the answer frozen to its depth |
+| I12, SG1 | a refusal frozen through `deepFreeze`'s `Set` again | 1, the capped `Set` |
+| SG1 | a problem record not frozen | 3, I9's refusals frozen |
+| SG1 | the problem list not frozen | 3, I9's refusals frozen |
+| I12, SG11 | the failure list frozen through `deepFreeze`'s `Set` again | 1, the capped `Set` |
+| SG11 | a failure not frozen | 3, the failure list fresh and frozen |
+| SG11 | a failure's `args` not frozen | 3, the failure list fresh and frozen |
+| SG11 | the failure list not frozen | 4, the failure list fresh and frozen |
+| SG11 | a copied object not frozen | 3, the failure list fresh and frozen |
+| SG11 | a copied array not frozen | 1, the kit's copies |
+| SG11 | a copied point not frozen | 1, a throwing accessor or `Proxy` |
+| SG11 | a thrown error's copy not frozen | 2, the capped `Set` |
+| SG11 | an unreadable value's copy not frozen | 1, the kit's copies |
+| SG11 | a copy begun before a read that threw, held by a cycle, not frozen | 1, the kit's copies |
+| `0.1.2` | the version left at `0.1.1` | 2, the repeated-build test |
+| I12 | the gate without the large step | 1, the gate test |
+| D6 | `tools/repeated-build.json` naming `0.1.2` as repeating `0.1.1` | 2, the repeated-build test |
+
+**Released** only by this repository's CI on the tag `v0.1.2`, pushed once the move is verified.
