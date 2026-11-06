@@ -35,7 +35,7 @@ test("CONTRACT.md carries the six headings of a component entry, in order", () =
 	const text = fs.readFileSync(path.join(here, "..", "..", "CONTRACT.md"), "utf8");
 	const headings = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
 	assert.deepEqual(headings, ["Duty", "Contract", "Reference", "Fit criteria", "Adjustment policy", "Edges"]);
-	for (const field of ["id: unminted", "category: component", "status: draft", "sovereignty: internal", "supersedes: []", "related: [C0, A3]"]) {
+	for (const field of ["id: C11", "category: component", "status: active", "sovereignty: internal", "supersedes: []", "related: [C0, A3]"]) {
 		assert.ok(text.includes(`\n${field}\n`), `the frontmatter holds ${field}`);
 	}
 });

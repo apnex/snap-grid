@@ -294,3 +294,18 @@ T1: the behaviour changes said `0.1.1` threw for a value of more than 2^24 array
 `CONTRACT.md`'s sentence on the copy and finding 2 above are reworded to parse.
 
 **Released** only by this repository's CI on the tag `v0.1.2`, pushed once the move is verified.
+
+---
+
+## D7 - Admitted to mission-kit's component registry as `C11`
+
+**Ruled by:** the director, 2026-11-06 (draw's `H26-1`, carried out as draw's H26.12).\
+**Affects:** `CONTRACT.md`'s frontmatter and its opening, `README.md`'s status line, and `D1`'s version clause.
+
+**Ruling.**\
+snap-grid is admitted to mission-kit's component registry as `C11` (`components/C11-snap-grid.md` in `apnex/mission-kit`, `649d42a`), its entry generated from `CONTRACT.md` and checked against it by a reader who built neither.\
+`CONTRACT.md`'s frontmatter now carries the id, `status: active`, and the entry's title and trigger, so the two stay one master.\
+`D1` kept the versions at `0.x` until this admission; its condition is met, and whether the next release is `1.0.0` is decided at that release, not by the admission.
+
+**Why.**\
+Draw's `H26-1` asked for each component registered, so another project finds it and uses it rather than rebuilding it (mission-kit's `C0`); draw's `dev/design/components/SNAP-GRID.md` asked for admission only once draw ran on the release, and draw and the gesture tester now both do.
